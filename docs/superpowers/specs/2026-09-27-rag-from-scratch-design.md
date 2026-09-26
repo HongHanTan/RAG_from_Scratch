@@ -71,7 +71,8 @@ rag/
   pipeline.py             wires the stages, returns a Trace
   __main__.py             CLI
 evaluation/
-  gold.json               ~30 questions tagged with expected chunks
+  gold.json               questions tagged with doc_id + answer span
+  spans.py                span -> overlapping chunk ids, at scoring time
   metrics.py              recall@k, mrr, ndcg
   benchmark.py            run all strategies, emit markdown table
 web/
@@ -170,18 +171,33 @@ are a flag on one strategy.
 Tests: RRF scores against a hand-computed worked example, query deduplication,
 trace shape. The LLM is mocked, so the suite runs offline in seconds.
 
-### Phase 3 — Evaluation harness
+### Phase 3 — Evaluation harness (thin slice)
 
 The package is named `evaluation/` rather than `eval/`, since `eval` is a Python
 builtin and a module of that name reads as a mistake.
 
-`evaluation/gold.json`: ~30 hand-written questions, each tagged with the chunk ids that
-should be retrieved. `evaluation/metrics.py`: Recall@k, MRR, nDCG. `evaluation/benchmark.py`
-runs every strategy across the gold set and emits a markdown table.
+This phase builds the full machinery but only a starter gold set: 10 questions,
+not 30. It should take about half a day. The remaining 20 questions are written
+in Phase 7, once it is clear which questions actually discriminate between
+techniques.
 
-Placed third rather than last so that every technique in Phases 4–6 is measured
-the day it lands, rather than evaluated in bulk at the end. The README's benchmark
-table then grows across the commit history.
+`evaluation/metrics.py`: Recall@k, MRR, nDCG. `evaluation/benchmark.py` runs every
+strategy across the gold set and emits a markdown table.
+
+**Gold questions are tagged by `doc_id` plus the character span of the text that
+answers them — not by chunk id.** `evaluation/spans.py` resolves a span to the set
+of chunks overlapping it at scoring time. This matters because chunk ids shift
+whenever chunk size or overlap changes; a chunk-id-based gold set would silently
+break the first time retrieval is tuned, while a span-based one survives
+re-chunking and can be reused to compare chunking configurations against each
+other.
+
+Placed third rather than last so that the techniques in Phases 4–6 are measured as
+they land. Without it, a subtly broken strategy — a step-back prompt that returns
+something close to the original question, an off-by-one in the RRF constant —
+produces plausible answers the whole way and is only discovered after later
+phases are built on top of it. It also means chunk size, overlap and `k` get
+tuned on evidence rather than picked once in Phase 1 and never revisited.
 
 ### Phase 4 — PDF Stages 2 and 3: routing and query construction
 
@@ -249,6 +265,19 @@ Panels:
 Because the LLM-heavy strategies take seconds, each panel renders its own loading
 state independently rather than blocking the page.
 
+### Phase 7 — Full gold set and final benchmark
+
+Expand the gold set from 10 questions to 30, chosen with knowledge of what every
+technique does: questions that separate flat retrieval from RAPTOR, questions
+whose phrasing rewards HyDE, questions with date and source constraints that
+exercise query construction. Re-run the complete benchmark and write the final
+table into the README.
+
+Deliberately last, and deliberately optional. It is data entry rather than
+engineering, so it sits where stopping early costs the least — at that point the
+project still has a real benchmark table, just one built on 10 questions instead
+of 30.
+
 ## Cross-cutting concerns
 
 ### Testing
@@ -278,10 +307,12 @@ returns malformed JSON.
 An on-disk cache keyed by `hash(prompt + model + params)` for LLM calls, and
 `.npz` for the embedding matrix.
 
-Without this, a single benchmark run is roughly 6 strategies (direct plus the
-five translation strategies) x 30 questions x several calls each — on the order of 700 LLM calls, repeated on every metric
-tweak. On Gemini's free tier that is the difference between a twenty-second
-iteration loop and a rate-limited afternoon.
+Without this, a full benchmark run is roughly 6 strategies (direct plus the five
+translation strategies) x 30 questions x several calls each — on the order of 700
+LLM calls, repeated on every metric tweak. On Gemini's free tier that is the
+difference between a twenty-second iteration loop and a rate-limited afternoon.
+The Phase 3 thin slice is a third of that, which is part of why 10 questions is
+a workable starting point.
 
 ### Configuration and reproducibility
 
@@ -303,9 +334,17 @@ the signal this project exists to send.
 by the response cache, exponential backoff, and mocked tests — but limits should
 be expected during benchmark runs.
 
-**Gold set quality is manual work.** Thirty questions tagged with correct chunks
-takes real effort, and a sloppy gold set produces confident but meaningless
-metrics. Budget time for it in Phase 3 rather than rushing it.
+**Gold set quality is manual work.** Tagging questions with the spans that answer
+them takes real effort, and a sloppy gold set produces confident but meaningless
+metrics. Splitting it across Phases 3 and 7 keeps any single sitting short, but
+neither sitting should be rushed — bad gold data is worse than none, because it
+looks authoritative.
+
+**Ten questions is a small sample.** Phase 3 metrics will be noisy, and a
+difference of one or two retrieved chunks moves Recall@5 by 10–20%. Treat them as
+a regression signal — "did this strategy break?" — not as evidence that one
+technique beats another. Only the Phase 7 numbers belong in the README as
+comparisons.
 
 **RAPTOR clustering quality depends on corpus size.** The 35–40 document target
 addresses this, but if clusters still come out uninformative, the fallback is to
