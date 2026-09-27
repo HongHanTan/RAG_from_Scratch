@@ -257,6 +257,44 @@ def test_chunk_overlap_larger_than_chunk_tokens_reports_cleanly(capsys):
     assert "Traceback" not in err
 
 
+# --- --retrieval-depth --------------------------------------------------------
+#
+# Phase 2's review asked for this knob to be reachable from the CLI; it was
+# previously only settable by editing Config or passing it in-process.
+
+
+def test_retrieval_depth_flag_is_forwarded_to_config(
+    tiny_corpus: Config, monkeypatch, capsys
+):
+    from dataclasses import replace
+
+    captured: dict = {}
+
+    def fake_load_config(**kw):
+        captured.update(kw)
+        return replace(tiny_corpus, **kw) if kw else tiny_corpus
+
+    monkeypatch.setattr("rag.__main__.load_config", fake_load_config)
+    main(["index"], **_factories())
+    assert main(["ask", "what is cosine?", "--retrieval-depth", "5"], **_factories()) == 0
+    assert captured.get("retrieval_depth") == 5
+
+
+def test_retrieval_depth_below_top_k_reports_cleanly(capsys):
+    # Same validation Config already applies to every other field: caught and
+    # reported like chunk_tokens/chunk_overlap, not a traceback.
+    assert (
+        main(
+            ["ask", "q", "--retrieval-depth", "1"],
+            **_factories_that_should_not_run(),
+        )
+        == 1
+    )
+    err = capsys.readouterr().err
+    assert "retrieval_depth" in err
+    assert "Traceback" not in err
+
+
 def test_negative_k_still_names_the_flag(capsys):
     assert main(["ask", "q", "--k", "-1"], **_factories_that_should_not_run()) == 1
     assert "--k" in capsys.readouterr().err

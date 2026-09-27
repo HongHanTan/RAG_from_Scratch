@@ -27,6 +27,15 @@ def test_table_names_the_k_it_measured():
     assert "nDCG@20" in format_table(_scores(), k=20)
 
 
+def test_table_labels_mrr_with_its_effective_cutoff():
+    # reciprocal_rank takes no k of its own, but trace.retrieved is already
+    # truncated to k by the time score_strategy reads it -- so the column is
+    # really MRR@k, and the header should say so rather than implying an
+    # unbounded reciprocal rank.
+    assert "MRR@20" in format_table(_scores(), k=20)
+    assert "| MRR |" not in format_table(_scores(), k=20)
+
+
 def test_table_reports_llm_calls_and_warm_ms_not_raw_mean_ms():
     # The old "Mean ms" column measured cache ordering, not strategy cost:
     # two strategies that build an identical prompt share an LLM cache key,
@@ -122,6 +131,21 @@ def test_counting_llm_does_not_alter_the_returned_text():
 
     llm = _CallCountingLLM(FakeLLM("exact text"))
     assert llm.generate("anything") == "exact text"
+
+
+def test_counting_llm_forwards_other_attributes_to_the_wrapped_llm():
+    # Only .generate() is intercepted; anything else must still reach the
+    # real LLM instead of failing only when the benchmark is what's asking.
+    from evaluation.benchmark import _CallCountingLLM
+
+    class _LLMWithExtraAttribute:
+        model = "gemini-3.5-flash-lite"
+
+        def generate(self, prompt: str) -> str:
+            return "x"
+
+    llm = _CallCountingLLM(_LLMWithExtraAttribute())
+    assert llm.model == "gemini-3.5-flash-lite"
 
 
 def test_direct_strategy_never_calls_the_llm(tiny_corpus: Config):

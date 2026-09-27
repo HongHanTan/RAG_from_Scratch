@@ -100,7 +100,10 @@ class _CallCountingLLM:
 
     Everything but `.generate()` is left alone -- there is no need to
     intercept it, since strategies only ever call `.generate(prompt)` on the
-    LLM they are given.
+    LLM they are given. `__getattr__` forwards anything else to the wrapped
+    LLM, so an attribute access that would work on the real LLM (a diagnostic
+    such as `.call_count`, say) still works through this wrapper instead of
+    failing only when the benchmark is what's asking.
     """
 
     def __init__(self, llm) -> None:
@@ -110,6 +113,9 @@ class _CallCountingLLM:
     def generate(self, prompt: str) -> str:
         self.logical_call_count += 1
         return self._llm.generate(prompt)
+
+    def __getattr__(self, name: str):
+        return getattr(self._llm, name)
 
 
 def check_not_degraded(trace: Trace) -> None:
@@ -231,9 +237,16 @@ def format_table(scores: list[StrategyScore], k: int) -> str:
     LLM cache happened to be warm, not its actual cost (see the module
     docstring). Neither replacement column can be perturbed by cache state or
     strategy run order.
+
+    The MRR column is labelled `MRR@k`, matching `Recall@k` and `nDCG@k`, even
+    though `reciprocal_rank` takes no cutoff of its own: `trace.retrieved` is
+    already truncated to `k` by the time `score_strategy` reads it, so the
+    values it sees are the same as if the cutoff were applied here too. The
+    label makes that true scope explicit rather than implying an unbounded
+    reciprocal rank over the whole corpus.
     """
     header = (
-        f"| Strategy | Recall@{k} | MRR | nDCG@{k} | DocPrec@{DOC_PRECISION_K} "
+        f"| Strategy | Recall@{k} | MRR@{k} | nDCG@{k} | DocPrec@{DOC_PRECISION_K} "
         "| LLM calls | Mean ms (warm) | Questions |\n"
         "|---|---:|---:|---:|---:|---:|---:|---:|"
     )

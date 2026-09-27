@@ -324,6 +324,12 @@ dated model rather than `gemini-flash-lite-latest` so that timings and answers
 quoted here stay reproducible as the "latest" alias moves on. Override any
 setting via `.env` or CLI flags; see `Config` for the full list.
 
+`--retrieval-depth` (default 20) is how many chunks each individual query
+retrieves before a multi-query strategy combines the lists — distinct from
+`--k`, which is how many chunks survive into the answer prompt after that
+combination; `python -m rag ask "..." --strategy hyde --retrieval-depth 30`
+raises it for one run.
+
 ## Tests
 
 ```bash

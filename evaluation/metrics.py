@@ -65,6 +65,16 @@ def doc_precision_at_k(
     passage of the right paper was retrieved, only that the paper was found.
     Measured at 0.560 for plain retrieval with a 0.0-1.0 spread across
     questions, so it discriminates rather than saturating.
+
+    The denominator is `len(top)`, i.e. `min(k, len(retrieved_doc_ids))`, not
+    a fixed `k`. If fewer than `k` results were retrieved at all -- a strategy
+    that returned fewer chunks than asked for, or the benchmark's own
+    `--k` set below `DOC_PRECISION_K` -- the missing slots are not results;
+    scoring them as misses would measure coverage, not the precision of what
+    was actually returned. This is inert whenever `retrieved_doc_ids` has at
+    least `k` entries (true throughout the benchmark's default `--k 20`,
+    since DocPrec is always measured at `k=5`), and only changes the number
+    if it does not.
     """
     top = retrieved_doc_ids[:k]
     if not top:

@@ -6,6 +6,7 @@
     python -m rag ask "..." --no-llm       # retrieval only, no API key needed
     python -m rag ask "..." --strategy hyde --queries
     python -m rag ask "..." --strategy decomposition --decomposition-mode independent
+    python -m rag ask "..." --strategy hyde --retrieval-depth 30
 
 The embedder and LLM are built by injected factories so the CLI can be tested
 without loading a model or holding a key. `--strategy` other than `direct`
@@ -108,6 +109,15 @@ def _build_parser() -> argparse.ArgumentParser:
     ask_parser = subparsers.add_parser("ask", help="answer a question")
     ask_parser.add_argument("question")
     ask_parser.add_argument("--k", type=int, help="number of chunks to retrieve")
+    ask_parser.add_argument(
+        "--retrieval-depth",
+        type=int,
+        help=(
+            "how many chunks each individual query retrieves before "
+            "combination (default: config value, currently 20); only "
+            "affects strategies that search more than one query per question"
+        ),
+    )
     ask_parser.add_argument("--trace", action="store_true", help="show scores, timings, prompt")
     ask_parser.add_argument("--no-llm", action="store_true", help="retrieve only")
     ask_parser.add_argument(
@@ -185,7 +195,7 @@ def _run(args, embedder_factory, llm_factory) -> int:
         )
 
     overrides = {}
-    for field in ("chunk_tokens", "chunk_overlap"):
+    for field in ("chunk_tokens", "chunk_overlap", "retrieval_depth"):
         value = getattr(args, field, None)
         if value is not None:
             overrides[field] = value
