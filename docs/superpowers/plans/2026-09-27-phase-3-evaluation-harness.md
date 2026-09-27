@@ -45,9 +45,13 @@ These would each distort the benchmark, so they are designed in rather than disc
 
 ## A refinement to the spec's gold-set format
 
-The spec says gold questions are tagged with "the character span of the text that answers them". Hand-authoring character offsets into a 200KB document is not workable, and an offset typed by hand is unverifiable by eye.
+The spec says gold questions are tagged with "the character span of the text that answers them" (singular). Hand-authoring character offsets into a 200KB document is not workable, and an offset typed by hand is unverifiable by eye.
 
-The gold set therefore stores a **verbatim quote** and resolves it to a span at load time. The result is identical — a `(doc_id, char_start, char_end)` span — but it is authorable, and loading validates that the quote occurs **exactly once** in its document, so a typo or an ambiguous quote fails loudly instead of silently scoring against the wrong passage. The span-based property the spec cares about is preserved: re-chunking does not invalidate the gold set.
+The gold set therefore stores a **verbatim quote** and resolves it to a span at load time, rather than a hand-typed offset. That part of the spec's intent survives unchanged: the span-based property that matters — re-chunking does not invalidate the gold set — is preserved, and loading validates that each quote occurs **exactly once** in its document, so a typo or an ambiguous quote fails loudly instead of silently scoring against the wrong passage.
+
+What changed from the spec, and from the original version of this section, is cardinality: `GoldQuestion.quotes` is a **list** of quotes, each resolved to its own span, giving `GoldQuestion.spans: tuple[tuple[int, int], ...]` — one span per quote, not one span per question. A question usually has more than one passage that actually answers it: a paper states its contribution in the abstract and then explains it properly in the body. Accepting only the first as correct scores a strategy zero for retrieving the better explanation of the same thing, which measures the gold set's incompleteness rather than the strategy.
+
+This was not a design preference, it was forced by calibration. Scoring plain retrieval against an early, single-quote version of this gold set produced a mean Recall@5 of **0.05** across the ten questions — there was no headroom left to tell any of the six strategies apart, since they were all pinned near zero for the same structural reason. Moving to a list of quotes per question (and separately, measuring recall/MRR/nDCG at k=20 rather than k=5 — see the benchmark's own docstring) gave plain retrieval a Recall@5 baseline actually able to move, and is what makes the benchmark table capable of showing a difference between strategies at all.
 
 ## File Structure
 
