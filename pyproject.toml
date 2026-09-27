@@ -13,6 +13,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 
+[tool.setuptools.packages.find]
+include = ["rag*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-m 'not slow and not live'"

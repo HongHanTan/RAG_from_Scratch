@@ -6,3 +6,4 @@ venv/
 .env
 data/index.npz
 .cache/
+*.egg-info/
