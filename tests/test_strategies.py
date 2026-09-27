@@ -359,6 +359,54 @@ def test_hyde_can_search_the_hypothetical_document_alone(tiny_corpus: Config):
     assert ctx.trace.queries == [HYDE_REPLY]
 
 
+def test_hyde_alone_still_labels_scores_cosine(tiny_corpus: Config):
+    # With only one list there is nothing to fuse; merge_best_score is correct
+    # and keeps the familiar cosine label.
+    ctx = build_context(tiny_corpus, llm=FakeLLM(HYDE_REPLY))
+    result = get_strategy("hyde", include_question=False).run("q", ctx)
+    assert all(r.score_kind == "cosine" for r in result.retrieved)
+
+
+def test_hyde_with_question_labels_scores_rrf(tiny_corpus: Config):
+    # Two lists that were never on a shared scale must be combined by fusion,
+    # not by raw score.
+    ctx = build_context(tiny_corpus, llm=FakeLLM(HYDE_REPLY))
+    result = get_strategy("hyde").run("q", ctx)
+    assert all(r.score_kind == "rrf" for r in result.retrieved)
+
+
+def test_hyde_merge_lets_the_question_compete_even_with_disjoint_score_ranges(
+    tiny_corpus: Config,
+):
+    # Measured against the real index, HyDE's hypothetical-document scores
+    # (0.7-0.8) sit systematically above the question's (0.3-0.4) -- that is
+    # the whole premise of HyDE. merge_best_score (a max over cosine) would
+    # let the higher-scoring list always win, so the question's results never
+    # get a chance to appear even when they found something the hypothetical
+    # document missed. Fusion decides by rank instead, so a chunk the question
+    # alone found can still make the merged top-k.
+    from rag.chunking import Chunk, RetrievedChunk
+
+    def fake_search(queries, k):
+        question_chunk = Chunk("only_question:0", "only_question", 0, "t", 0, 1, 0, 1)
+        question_list = [RetrievedChunk(chunk=question_chunk, score=0.398, rank=1)]
+        hyde_list = [
+            RetrievedChunk(
+                chunk=Chunk(f"hyde:{i}", "hyde", i, "t", 0, 1, 0, 1),
+                score=0.79 - i * 0.01,
+                rank=i + 1,
+            )
+            for i in range(5)
+        ]
+        return [question_list, hyde_list]
+
+    ctx = build_context(tiny_corpus, llm=FakeLLM(HYDE_REPLY))
+    ctx.search = fake_search
+    result = get_strategy("hyde").run("q", ctx)
+    ids = [r.chunk.chunk_id for r in result.retrieved]
+    assert "only_question:0" in ids
+
+
 def test_hyde_returns_at_most_top_k(tiny_corpus: Config):
     ctx = build_context(tiny_corpus, llm=FakeLLM(HYDE_REPLY))
     assert len(get_strategy("hyde").run("q", ctx).retrieved) <= tiny_corpus.top_k
