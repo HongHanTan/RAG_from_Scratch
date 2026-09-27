@@ -60,6 +60,17 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-2-query-translation.md](docs/supe
 
 ### Phase 2 carried items
 
+- **Task 9, Minor x2** — `format_trace` prints `Strategy:` twice in verbose output when
+  translation steps exist; `--decomposition-mode` is silently ignored when the strategy
+  is not decomposition, which is inconsistent next to `--no-llm`, a flag that *is*
+  validated. Both cosmetic, both deferred to the final review's fix pass.
+- **Step-back took four attempts** — first line (searched the preamble), last candidate
+  (searched the sign-off), shape/`?` (defeated by a preamble phrased as a question),
+  and finally chatter-filter + shape with a fallback. Nine reply shapes now pass. The
+  code documents the ceiling: the principled fix is structured output, which Phase 4
+  introduces for logical routing. Step-back should adopt it then rather than accruing
+  more rules.
+
 - **Task 8, Minor** — recursive decomposition accumulates prior Q/A pairs into each
   later sub-question's prompt with no length cap; the "two sentences at most" limit is
   prompt-only, not enforced. Harmless at the default `max_sub_questions=3` (~2 pairs),
