@@ -52,14 +52,20 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-2-query-translation.md](docs/supe
 | 3 | Strategy protocol, context, direct | ✅ | `28e5166` | 282 tests; no import cycle |
 | 4 | Multi-query | ✅ | `4153a81` | 295 tests; beats direct on a real question |
 | 5 | RAG-Fusion | ✅ | `87e661e` | 301 tests |
-| 6 | Step-back | 🔄 | | |
-| 7 | HyDE | ⬜ | | |
-| 8 | Decomposition (recursive + independent) | ⬜ | | largest task |
+| 6 | Step-back | ✅ | `d0a60a1` | 307 tests |
+| 7 | HyDE | ✅ | `8d41135`, `4c19628` | 321 tests; incl. parser fixes |
+| 8 | Decomposition (recursive + independent) | 🔄 | | largest task |
 | 9 | CLI `--strategy`, rendering, README | ⬜ | | |
 | — | Final whole-branch review | ⬜ | | |
 
 ### Phase 2 carried items
 
+- **Tasks 4/5, Important — FIXED** (`8d41135`) — `parse_query_list` kept the model's
+  preamble and sign-off as search queries. Confirmed: a reply wrapped in "Here are five
+  queries:" / "I hope these help!" yielded two junk queries. Harmful for RAG-Fusion in
+  particular, where junk results fuse in as independent evidence. Now prefers marked
+  lines when any marker is present. Same commit normalised near-duplicate rewrite
+  detection (casefold + whitespace) and truncated rewrites to `n`.
 - **Task 3, Minor** — `build_answer_prompt`'s docstring lost Phase 1's note explaining
   that `str.format` only scans the template, so chunk text containing `{}` cannot
   inject. Behaviour is unchanged; the comment is what stops someone reintroducing the
