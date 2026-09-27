@@ -33,7 +33,20 @@ def load_documents(corpus_dir: Path, metadata_path: Path) -> list[Document]:
     if not metadata_path.is_file():
         raise FileNotFoundError(f"metadata file not found: {metadata_path}")
 
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))["documents"]
+    raw_text = metadata_path.read_text(encoding="utf-8")
+    try:
+        parsed = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"metadata file could not be parsed as JSON: {metadata_path} ({exc})"
+        ) from exc
+
+    metadata = parsed.get("documents") if isinstance(parsed, dict) else None
+    if not isinstance(metadata, dict):
+        raise ValueError(
+            f'metadata file must contain a top-level "documents" object: {metadata_path}'
+        )
+
     text_files = {p.stem: p for p in corpus_dir.glob("*.txt")}
 
     orphans = sorted(set(text_files) - set(metadata))
@@ -53,12 +66,21 @@ def load_documents(corpus_dir: Path, metadata_path: Path) -> list[Document]:
         if not text:
             raise ValueError(f"document is empty: {doc_id}")
         record = metadata[doc_id]
+        try:
+            title = record["title"]
+            source = record["source"]
+        except KeyError as exc:
+            field = exc.args[0]
+            raise ValueError(
+                f"metadata entry '{doc_id}' in {metadata_path} is missing "
+                f"required field '{field}'"
+            ) from exc
         documents.append(
             Document(
                 doc_id=doc_id,
                 text=text,
-                title=record["title"],
-                source=record["source"],
+                title=title,
+                source=source,
                 publish_date=record.get("publish_date"),
                 author=record.get("author"),
                 url=record.get("url"),

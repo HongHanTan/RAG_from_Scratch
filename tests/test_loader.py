@@ -71,3 +71,49 @@ def test_optional_metadata_fields_default_to_none(tiny_corpus: Config):
     assert docs[0].publish_date is None
     assert docs[0].author is None
     assert docs[0].url is None
+
+
+def test_invalid_json_metadata_raises_actionable_value_error(tiny_corpus: Config):
+    tiny_corpus.metadata_path.write_text("{not valid json", encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON") as exc_info:
+        load_documents(tiny_corpus.corpus_dir, tiny_corpus.metadata_path)
+    message = str(exc_info.value)
+    assert str(tiny_corpus.metadata_path) in message
+    assert exc_info.value.__cause__ is not None
+    assert isinstance(exc_info.value.__cause__, json.JSONDecodeError)
+
+
+def test_missing_documents_key_raises_actionable_value_error(tiny_corpus: Config):
+    tiny_corpus.metadata_path.write_text(json.dumps({"not_documents": {}}), encoding="utf-8")
+    with pytest.raises(ValueError, match="documents") as exc_info:
+        load_documents(tiny_corpus.corpus_dir, tiny_corpus.metadata_path)
+    assert str(tiny_corpus.metadata_path) in str(exc_info.value)
+
+
+def test_documents_key_that_is_not_a_mapping_raises_actionable_value_error(tiny_corpus: Config):
+    tiny_corpus.metadata_path.write_text(json.dumps({"documents": []}), encoding="utf-8")
+    with pytest.raises(ValueError, match="documents") as exc_info:
+        load_documents(tiny_corpus.corpus_dir, tiny_corpus.metadata_path)
+    assert str(tiny_corpus.metadata_path) in str(exc_info.value)
+
+
+def test_metadata_entry_missing_title_raises_actionable_value_error(tiny_corpus: Config):
+    meta = json.loads(tiny_corpus.metadata_path.read_text(encoding="utf-8"))
+    del meta["documents"]["alpha"]["title"]
+    tiny_corpus.metadata_path.write_text(json.dumps(meta), encoding="utf-8")
+    with pytest.raises(ValueError, match="alpha") as exc_info:
+        load_documents(tiny_corpus.corpus_dir, tiny_corpus.metadata_path)
+    message = str(exc_info.value)
+    assert str(tiny_corpus.metadata_path) in message
+    assert "title" in message
+
+
+def test_metadata_entry_missing_source_raises_actionable_value_error(tiny_corpus: Config):
+    meta = json.loads(tiny_corpus.metadata_path.read_text(encoding="utf-8"))
+    del meta["documents"]["beta"]["source"]
+    tiny_corpus.metadata_path.write_text(json.dumps(meta), encoding="utf-8")
+    with pytest.raises(ValueError, match="beta") as exc_info:
+        load_documents(tiny_corpus.corpus_dir, tiny_corpus.metadata_path)
+    message = str(exc_info.value)
+    assert str(tiny_corpus.metadata_path) in message
+    assert "source" in message
