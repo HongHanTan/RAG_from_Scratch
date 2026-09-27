@@ -51,8 +51,8 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-2-query-translation.md](docs/supe
 | 2 | Reciprocal rank fusion + best-score merge | ✅ | `3d2347e` | 269 tests; RRF math hand-verified |
 | 3 | Strategy protocol, context, direct | ✅ | `28e5166` | 282 tests; no import cycle |
 | 4 | Multi-query | ✅ | `4153a81` | 295 tests; beats direct on a real question |
-| 5 | RAG-Fusion | 🔄 | | |
-| 6 | Step-back | ⬜ | | |
+| 5 | RAG-Fusion | ✅ | `87e661e` | 301 tests |
+| 6 | Step-back | 🔄 | | |
 | 7 | HyDE | ⬜ | | |
 | 8 | Decomposition (recursive + independent) | ⬜ | | largest task |
 | 9 | CLI `--strategy`, rendering, README | ⬜ | | |
