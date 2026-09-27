@@ -15,20 +15,15 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from typing import Iterator
 
-from rag.chunking import Chunk
+from rag.chunking import Chunk, RetrievedChunk
+
+__all__ = ["StageTiming", "RetrievedChunk", "Trace"]
 
 
 @dataclass
 class StageTiming:
     name: str
     ms: float
-
-
-@dataclass
-class RetrievedChunk:
-    chunk: Chunk
-    score: float
-    rank: int   # 1-based
 
 
 @dataclass

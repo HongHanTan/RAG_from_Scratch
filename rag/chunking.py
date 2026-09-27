@@ -28,6 +28,24 @@ class Chunk:
     char_end: int    # exclusive
 
 
+@dataclass
+class RetrievedChunk:
+    """One chunk as it came back from a search, with its rank in that result.
+
+    This is the single representation of a retrieval result used across the
+    pipeline: `VectorStore.search`, `prompts.format_context`,
+    `generation.generate_answer` and `Trace.retrieved` all speak this type,
+    rather than `search` handing back plain `(Chunk, score)` tuples that get
+    converted to `RetrievedChunk` (with its `rank`) only on the way into the
+    trace. Phase 2's rank fusion needs `rank` on every result, not just the
+    ones that happen to reach the trace.
+    """
+
+    chunk: Chunk
+    score: float
+    rank: int   # 1-based
+
+
 def window_bounds(n_tokens: int, size: int, overlap: int) -> list[tuple[int, int]]:
     """Half-open [start, end) windows covering n_tokens.
 

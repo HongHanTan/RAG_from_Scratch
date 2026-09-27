@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-from rag.chunking import Chunk
+from rag.chunking import Chunk, RetrievedChunk
 from rag.embedding import l2_normalize
 from rag.similarity import top_k
 
@@ -50,8 +50,8 @@ class VectorStore:
 
     def search(
         self, query_vectors: np.ndarray, k: int
-    ) -> list[list[tuple[Chunk, float]]]:
-        """Nearest chunks for each query row, best first."""
+    ) -> list[list[RetrievedChunk]]:
+        """Nearest chunks for each query row, best first, ranked from one."""
         query_vectors = np.atleast_2d(np.asarray(query_vectors, dtype=np.float32))
         if len(self.chunks) == 0:
             return [[] for _ in range(query_vectors.shape[0])]
@@ -60,7 +60,10 @@ class VectorStore:
         scores = l2_normalize(query_vectors) @ self.vectors.T
         indices, values = top_k(scores, k)
         return [
-            [(self.chunks[int(i)], float(s)) for i, s in zip(row_i, row_s)]
+            [
+                RetrievedChunk(chunk=self.chunks[int(i)], score=float(s), rank=rank)
+                for rank, (i, s) in enumerate(zip(row_i, row_s), start=1)
+            ]
             for row_i, row_s in zip(indices, values)
         ]
 

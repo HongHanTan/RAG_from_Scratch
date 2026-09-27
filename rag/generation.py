@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from rag.chunking import Chunk
+from rag.chunking import RetrievedChunk
 from rag.llm import LLMError
 from rag.prompts import build_answer_prompt
 from rag.trace import Trace
@@ -11,7 +11,7 @@ from rag.trace import Trace
 def generate_answer(
     llm,
     question: str,
-    retrieved: list[tuple[Chunk, float]],
+    retrieved: list[RetrievedChunk],
     trace: Trace,
 ) -> str | None:
     """Generate an answer, recording prompt, answer and timing on the trace.

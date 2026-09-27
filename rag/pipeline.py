@@ -11,7 +11,7 @@ from rag.config import Config
 from rag.generation import generate_answer
 from rag.loader import load_documents
 from rag.store import VectorStore
-from rag.trace import RetrievedChunk, Trace
+from rag.trace import Trace
 
 
 def build_index(config: Config, embedder) -> VectorStore:
@@ -49,10 +49,7 @@ def ask(
     with trace.stage("search"):
         results = store.search(query_vectors, k)[0]
 
-    trace.retrieved = [
-        RetrievedChunk(chunk=chunk, score=score, rank=rank)
-        for rank, (chunk, score) in enumerate(results, start=1)
-    ]
+    trace.retrieved = results
 
     if llm is None:
         trace.note("retrieval only: no LLM configured")

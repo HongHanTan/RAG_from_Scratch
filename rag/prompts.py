@@ -7,7 +7,7 @@ strategies. Later phases append their templates here.
 
 from __future__ import annotations
 
-from rag.chunking import Chunk
+from rag.chunking import RetrievedChunk
 
 NO_CONTEXT = "(no documents retrieved)"
 
@@ -27,21 +27,21 @@ Question: {question}
 Answer:"""
 
 
-def format_context(retrieved: list[tuple[Chunk, float]]) -> str:
+def format_context(retrieved: list[RetrievedChunk]) -> str:
     """Render retrieved chunks as a numbered, citable block."""
     if not retrieved:
         return NO_CONTEXT
     blocks = []
-    for number, (chunk, score) in enumerate(retrieved, start=1):
+    for item in retrieved:
         blocks.append(
-            f"[{number}] source: {chunk.doc_id}, chunk {chunk.index}, "
-            f"score {score:.3f}\n{chunk.text}"
+            f"[{item.rank}] source: {item.chunk.doc_id}, chunk {item.chunk.index}, "
+            f"score {item.score:.3f}\n{item.chunk.text}"
         )
     return "\n\n".join(blocks)
 
 
 def build_answer_prompt(
-    question: str, retrieved: list[tuple[Chunk, float]]
+    question: str, retrieved: list[RetrievedChunk]
 ) -> str:
     """Fill the answer template. Chunk text may contain braces; it is not
     re-formatted, so `{}` in a document cannot break or inject anything."""

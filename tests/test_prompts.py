@@ -1,11 +1,19 @@
-from rag.chunking import Chunk
+from rag.chunking import Chunk, RetrievedChunk
 from rag.prompts import ANSWER_TEMPLATE, build_answer_prompt, format_context
 
 
 def _retrieved():
     return [
-        (Chunk("alpha:0", "alpha", 0, "Cosine ignores magnitude.", 0, 5, 0, 25), 0.91),
-        (Chunk("beta:2", "beta", 2, "RRF sums reciprocal ranks.", 0, 5, 0, 26), 0.77),
+        RetrievedChunk(
+            Chunk("alpha:0", "alpha", 0, "Cosine ignores magnitude.", 0, 5, 0, 25),
+            0.91,
+            1,
+        ),
+        RetrievedChunk(
+            Chunk("beta:2", "beta", 2, "RRF sums reciprocal ranks.", 0, 5, 0, 26),
+            0.77,
+            2,
+        ),
     ]
 
 
@@ -59,6 +67,6 @@ def test_prompt_has_no_unfilled_placeholders():
 
 
 def test_braces_in_chunk_text_do_not_break_formatting():
-    chunks = [(Chunk("a:0", "a", 0, "code: {'k': 1}", 0, 5, 0, 14), 0.5)]
+    chunks = [RetrievedChunk(Chunk("a:0", "a", 0, "code: {'k': 1}", 0, 5, 0, 14), 0.5, 1)]
     prompt = build_answer_prompt("q", chunks)
     assert "{'k': 1}" in prompt

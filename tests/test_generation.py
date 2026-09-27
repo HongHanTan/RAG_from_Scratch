@@ -1,11 +1,11 @@
-from rag.chunking import Chunk
+from rag.chunking import Chunk, RetrievedChunk
 from rag.generation import generate_answer
 from rag.trace import Trace
 from tests.conftest import FakeLLM
 
 
 def _retrieved():
-    return [(Chunk("a:0", "a", 0, "Some context.", 0, 5, 0, 13), 0.9)]
+    return [RetrievedChunk(Chunk("a:0", "a", 0, "Some context.", 0, 5, 0, 13), 0.9, 1)]
 
 
 def test_returns_the_model_answer():
