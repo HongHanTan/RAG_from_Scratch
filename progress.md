@@ -55,8 +55,8 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-2-query-translation.md](docs/supe
 | 6 | Step-back | ✅ | `d0a60a1` | 307 tests |
 | 7 | HyDE | ✅ | `8d41135`, `4c19628` | 321 tests; incl. parser fixes |
 | 8 | Decomposition (recursive + independent) | ✅ | `2c90cff` | 334 tests; nesting verified |
-| 9 | CLI `--strategy`, rendering, README | 🔄 | | + queued step-back fix |
-| — | Final whole-branch review | ⬜ | | |
+| 9 | CLI `--strategy`, rendering, README | ✅ | `0ec17a5`, `dbd3eeb`, `1e4ba4f` | 352 tests |
+| — | Final whole-branch review | 🔄 | | |
 
 ### Phase 2 carried items
 
@@ -66,13 +66,13 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-2-query-translation.md](docs/supe
   unbounded in principle. `max_sub_questions` is not exposed on the CLI, so nothing can
   reach the bad case today. Revisit if it ever is.
 
-- **Task 6, IMPORTANT — queued fix.** `step_back.py` takes `raw.splitlines()[0]` with no
-  preamble stripping, so a reply like *"Sure, here's a more general question:
-What is
-  vector similarity?"* searches the preamble and silently discards the real question.
-  Reproduced directly. Inconsistent with the same commit's `parse_query_list` hardening,
-  which exists precisely to strip that chatter — we fixed one path and not its sibling.
-  Fix: reuse `parse_query_list` and take its first result.
+- **Task 6, IMPORTANT — FIXED.** `step_back.py` searched the model's preamble and
+  discarded the real question. The first fix attempt (take the *last* candidate) traded
+  one failure for another: preamble worked, sign-off broke — it assumed the model obeys
+  the prompt, which is what caused the original bug. Now identifies the question by
+  *shape* (prefers a line ending in `?`, strips markdown emphasis, falls back to the
+  longest candidate). Verified against six reply shapes including preamble-only,
+  sign-off-only, both, and bolded.
 
 - **Tasks 4/5, Important — FIXED** (`8d41135`) — `parse_query_list` kept the model's
   preamble and sign-off as search queries. Confirmed: a reply wrapped in "Here are five
