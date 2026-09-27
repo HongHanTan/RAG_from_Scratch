@@ -22,12 +22,12 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 | 12 | Pipeline | ✅ | `a093547` | 16 tests; full index built, end-to-end ask() works |
 | 13 | CLI | ✅ | `bf41261`, `461c227` | 18 tests; Windows encoding crash fixed |
 | 14 | README + no-frameworks guard | ✅ | `adc41d3`, `9f9c811`, `536dfb1` | 211 total; Quick start run end to end |
-| — | Final whole-branch review | 🔄 | | |
+| — | Final whole-branch review | ✅ | `82d347a`..`858497d` | 5 Important + minors, all fixed |
 
-All 14 tasks implemented. **211 tests passing**, 4 slow tests deselected by default.
-Final whole-branch review in progress.
+**Phase 1 complete.** 246 tests passing, plus 4 slow tests against the real model.
+Final review found 5 Important issues; all are fixed.
 
-Working system: 38 documents → 5,116 chunks → 9.0 MB index; search 6–18 ms;
+Working system: 38 documents → 5,116 chunks → 9.0 MB index; search 2–4 ms;
 grounded answers with citations; `--no-llm` runs with no API key.
 
 ```
