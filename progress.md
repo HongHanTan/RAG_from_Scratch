@@ -54,11 +54,19 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-2-query-translation.md](docs/supe
 | 5 | RAG-Fusion | ✅ | `87e661e` | 301 tests |
 | 6 | Step-back | ✅ | `d0a60a1` | 307 tests |
 | 7 | HyDE | ✅ | `8d41135`, `4c19628` | 321 tests; incl. parser fixes |
-| 8 | Decomposition (recursive + independent) | 🔄 | | largest task |
-| 9 | CLI `--strategy`, rendering, README | ⬜ | | |
+| 8 | Decomposition (recursive + independent) | ✅ | `2c90cff` | 334 tests; nesting verified |
+| 9 | CLI `--strategy`, rendering, README | 🔄 | | + queued step-back fix |
 | — | Final whole-branch review | ⬜ | | |
 
 ### Phase 2 carried items
+
+- **Task 6, IMPORTANT — queued fix.** `step_back.py` takes `raw.splitlines()[0]` with no
+  preamble stripping, so a reply like *"Sure, here's a more general question:
+What is
+  vector similarity?"* searches the preamble and silently discards the real question.
+  Reproduced directly. Inconsistent with the same commit's `parse_query_list` hardening,
+  which exists precisely to strip that chatter — we fixed one path and not its sibling.
+  Fix: reuse `parse_query_list` and take its first result.
 
 - **Tasks 4/5, Important — FIXED** (`8d41135`) — `parse_query_list` kept the model's
   preamble and sign-off as search queries. Confirmed: a reply wrapped in "Here are five
