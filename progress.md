@@ -15,9 +15,9 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 | 5 | Token-aware chunking | ✅ | `f72b505` | 18 tests; 5,116 chunks, offsets independently verified |
 | 6 | Embeddings | ✅ | `dfde3c1` | 9 fast + 4 slow; review clean, no findings |
 | 7 | Similarity and top-k | ✅ | `7fd1286` | 16 tests; review approved, 2 Minor |
-| 8 | Vector store | ✅ | `1937bf1` | 13 tests; 5,116-chunk index, 6-18 ms search, 9 MB |
-| 9 | Trace | 🔄 | | |
-| 10 | Gemini client (cache + retry) | ⬜ | | needs API key to verify model id |
+| 8 | Vector store | ✅ | `1937bf1` | 13 tests; 6-18 ms search over 5,116 chunks; review approved |
+| 9 | Trace | ✅ | `673a407` | 8 tests; JSON contract verified |
+| 10 | Gemini client (cache + retry) | 🔄 | | key in .env; format unverified |
 | 11 | Prompt template and generation | ⬜ | | |
 | 12 | Pipeline | ⬜ | | |
 | 13 | CLI | ⬜ | | builds real index |
@@ -42,6 +42,12 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   re-deriving that slice could never fail. Caught by the Task 5 reviewer. Replaced with
   a real check (token-surface correspondence and monotonicity over 766k tokens), which
   found zero genuine offset errors.
+- **Task 8, Minor** — `str(data["chunks"])` pulls the JSON blob out of a 0-d NumPy
+  array; `.item()` would be more idiomatic. Verified correct in practice: the reviewer
+  round-tripped a 2 MB non-ASCII payload byte-for-byte with no truncation.
+- **Plan error (mine), Task 9** — the plan's prose said "Expected: 9 passed" but the
+  test code it specified contains 8 functions. No test was dropped; the count in the
+  plan was simply wrong. Worth knowing before trusting the other per-task counts.
 - **Task 7, Minor** — `cosine_similarity` re-normalises defensively, which is not
   bit-exact for input that is already unit-length float32: max abs difference ~6e-8, so
   a vector's self-similarity returns `1.0000001` rather than exactly `1.0`. Harmless at
