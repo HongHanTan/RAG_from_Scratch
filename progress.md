@@ -20,11 +20,20 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 | 10 | Gemini client (cache + retry) | ✅ | `31a1fba`, `920eea4` | 16 tests; live call + cache verified |
 | 11 | Prompt template and generation | ✅ | `ff64a4f` | 16 tests; grounding verified against off-corpus question |
 | 12 | Pipeline | ✅ | `a093547` | 16 tests; full index built, end-to-end ask() works |
-| 13 | CLI | 🔄 | | index already built |
-| 14 | README + no-frameworks guard | ⬜ | | |
+| 13 | CLI | ✅ | `bf41261` | 13 tests; 187 total; all 4 demo commands verified |
+| 14 | README + no-frameworks guard | 🔄 | | plus cache-visibility fix |
 | — | Final whole-branch review | ⬜ | | |
 
 ## Minor findings deferred to final review
+
+**Theme: non-atomic file writes (2 instances, worth fixing together).** Both
+`save_metadata` in `scripts/fetch_corpus.py` and `VectorStore.save` in `rag/store.py`
+write directly to their target path with no temp-file-then-rename. An interrupted write
+leaves a corrupt `data/metadata.json` or `data/index.npz` respectively — in both cases
+worse than the absence the write was guarding against, since the next run fails on
+parse rather than on a missing file. Found independently by two reviewers in two
+modules. A shared `write_atomic` helper (write `.tmp`, then `Path.replace`) fixes both
+in a few lines and is the single highest-value cleanup left in Phase 1.
 
 - **Task 1, Minor** — `Config` implementation is a verbatim transcription of the plan's
   reference code. Acceptable (the plan supplied working code), noted for the record.
@@ -50,6 +59,9 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 - **Task 11, Minor** — the template never explicitly mentions the
   `(no documents retrieved)` marker; refusal in that case relies on the general
   "context does not answer the question" rule. It works, but implicitly.
+- **Task 12, Minor** — the `RetrievedChunk` wrapping loop runs just outside the
+  `with trace.stage("search")` block, so a trivial O(k) step is untimed. Negligible in
+  magnitude; noted because `--trace` timings are presented as complete.
 - **Task 9, Minor (informational)** — `total_ms` on an empty trace returns int `0`
   rather than float `0.0`. Serialises identically and compares equal; noted only so
   nobody is surprised by the type.
@@ -109,6 +121,14 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   HTML they carry title and authors.
 
 ## Decisions and deviations
+
+- **ADDITION BEYOND PLAN: `--trace` now marks cache hits.** Measured on the real index,
+  a cached question reports `generate 0.7 ms` and an uncached one `generate 1455.0 ms`
+  — a 2000x difference presented identically. The original project brief names
+  "latency bottlenecks" as something this project demonstrates, and a trace implying a
+  sub-millisecond LLM call actively misleads; the README would also quote whichever
+  figure happened to be cached when it was written. Small addition to Task 14: the LLM
+  reports whether a response was served from cache, and the trace records it.
 
 - **DEVIATION FROM PLAN: README demo question changed.** The plan uses "What is
   reciprocal rank fusion?" as the headline demo throughout, and against the real index
