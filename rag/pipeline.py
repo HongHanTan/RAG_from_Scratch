@@ -6,11 +6,15 @@ question arriving and the search running; the Trace shape does not change.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from rag.chunking import chunk_documents
 from rag.config import Config
 from rag.generation import generate_answer
 from rag.loader import load_documents
 from rag.store import VectorStore
+from rag.strategies import get_strategy
+from rag.strategies.base import StrategyContext
 from rag.trace import Trace
 
 
@@ -58,23 +62,34 @@ def ask(
     llm,
     config: Config,
     k: int | None = None,
+    strategy: str = "direct",
+    strategy_options: dict | None = None,
 ) -> Trace:
-    """Answer one question. Pass llm=None to retrieve without generating."""
+    """Answer one question. Pass llm=None to retrieve without generating.
+
+    The named strategy decides what to retrieve; everything after that is the
+    same for all of them.
+    """
     trace = Trace(question=question)
-    trace.queries = [question]
-    k = config.top_k if k is None else k
+    trace.strategy = strategy
+    effective_k = config.top_k if k is None else k
 
-    with trace.stage("embed"):
-        query_vectors = embedder.encode([question])
-
-    with trace.stage("search"):
-        results = store.search(query_vectors, k)[0]
-
-    trace.retrieved = results
+    chosen = get_strategy(strategy, **(strategy_options or {}))
+    ctx = StrategyContext(
+        store=store,
+        embedder=embedder,
+        llm=llm,
+        config=replace(config, top_k=effective_k),
+        trace=trace,
+    )
+    result = chosen.run(question, ctx)
+    trace.retrieved = result.retrieved
 
     if llm is None:
         trace.note("retrieval only: no LLM configured")
         return trace
 
-    generate_answer(llm, question, results, trace)
+    generate_answer(
+        llm, question, result.retrieved, trace, extra_context=result.extra_context
+    )
     return trace

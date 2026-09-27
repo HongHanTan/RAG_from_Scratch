@@ -13,6 +13,7 @@ def generate_answer(
     question: str,
     retrieved: list[RetrievedChunk],
     trace: Trace,
+    extra_context: str | None = None,
 ) -> str | None:
     """Generate an answer, recording prompt, answer and timing on the trace.
 
@@ -20,7 +21,7 @@ def generate_answer(
     succeeded at this point, so the trace is still worth showing — failing hard
     would throw away the useful half of the result.
     """
-    prompt = build_answer_prompt(question, retrieved)
+    prompt = build_answer_prompt(question, retrieved, extra_context=extra_context)
     trace.prompt = prompt
     with trace.stage("generate"):
         try:

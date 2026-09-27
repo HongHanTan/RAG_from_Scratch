@@ -43,10 +43,21 @@ def format_context(retrieved: list[RetrievedChunk]) -> str:
 
 
 def build_answer_prompt(
-    question: str, retrieved: list[RetrievedChunk]
+    question: str,
+    retrieved: list[RetrievedChunk],
+    extra_context: str | None = None,
 ) -> str:
-    """Fill the answer template. Chunk text may contain braces; it is not
-    re-formatted, so `{}` in a document cannot break or inject anything."""
-    return ANSWER_TEMPLATE.format(
-        context=format_context(retrieved), question=question
-    )
+    """Fill the answer template.
+
+    `extra_context` holds text the strategy derived (decomposition's
+    sub-answers). It is labelled separately from the retrieved excerpts so the
+    model does not cite generated text as though it were a source.
+    """
+    context = format_context(retrieved)
+    if extra_context:
+        context = (
+            f"{context}\n\n"
+            f"Working notes (derived from the excerpts above, not a source — "
+            f"do not cite these):\n{extra_context}"
+        )
+    return ANSWER_TEMPLATE.format(context=context, question=question)

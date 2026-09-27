@@ -125,3 +125,23 @@ def test_load_index_refuses_an_index_built_with_different_chunking(
     changed = replace(tiny_corpus, chunk_tokens=4, chunk_overlap=1)
     with pytest.raises(ValueError, match="chunk_tokens"):
         load_index(changed)
+
+
+# --- strategy dispatch --------------------------------------------------------
+
+def test_ask_defaults_to_the_direct_strategy(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder())
+    trace = ask("q", store, FakeEmbedder(), FakeLLM(), tiny_corpus)
+    assert trace.strategy == "direct"
+
+
+def test_ask_records_the_strategy_it_used(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder())
+    trace = ask("q", store, FakeEmbedder(), FakeLLM(), tiny_corpus, strategy="direct")
+    assert trace.strategy == "direct"
+
+
+def test_ask_rejects_an_unknown_strategy(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder())
+    with pytest.raises(ValueError, match="nope"):
+        ask("q", store, FakeEmbedder(), FakeLLM(), tiny_corpus, strategy="nope")
