@@ -47,9 +47,9 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-2-query-translation.md](docs/supe
 
 | # | Task | Status | Commits | Notes |
 |---|------|--------|---------|-------|
-| 1 | Trace depth, score labels, translation steps | ⬜ | | fixes 3 deferred Phase 1 findings |
-| 2 | Reciprocal rank fusion + best-score merge | ⬜ | | |
-| 3 | Strategy protocol, context, direct | ⬜ | | |
+| 1 | Trace depth, score labels, translation steps | ✅ | `ff3ab86` | 254 tests; review clean |
+| 2 | Reciprocal rank fusion + best-score merge | ✅ | `3d2347e` | 269 tests; RRF math hand-verified |
+| 3 | Strategy protocol, context, direct | 🔄 | | |
 | 4 | Multi-query | ⬜ | | |
 | 5 | RAG-Fusion | ⬜ | | |
 | 6 | Step-back | ⬜ | | |
