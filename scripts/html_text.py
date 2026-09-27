@@ -50,12 +50,24 @@ class HTMLTextExtractor(HTMLParser):
     react to it.
     """
 
-    def __init__(self, dropped_tags: frozenset[str] = DROPPED_TAGS) -> None:
+    def __init__(
+        self,
+        dropped_tags: frozenset[str] = DROPPED_TAGS,
+        skip_occurrences: frozenset[tuple[str, int]] = frozenset(),
+    ) -> None:
         super().__init__(convert_charrefs=True)
         self._parts: list[str] = []
         self._dropped_tags = dropped_tags
-        self._drop_stack: list[str] = []
+        # Which specific occurrences (by tag name + 1-based occurrence index,
+        # counted in document order of start tags) should NOT be pushed onto
+        # the drop stack. Used by the recovery pass to demote exactly the
+        # unclosed occurrence of a tag name, leaving every other, well-formed
+        # occurrence of that same name dropped as usual.
+        self._skip_occurrences = skip_occurrences
+        self._tag_occurrence_counts: dict[str, int] = {}
+        self._drop_stack: list[tuple[str, int]] = []
         self.unclosed: list[str] = []
+        self.unclosed_occurrences: list[tuple[str, int]] = []
 
     def _unwind_to(self, tag: str) -> bool:
         """Pop the stack up to and including the last occurrence of tag.
@@ -65,7 +77,7 @@ class HTMLTextExtractor(HTMLParser):
         untouched -- this is what makes a stray close tag a no-op).
         """
         for index in range(len(self._drop_stack) - 1, -1, -1):
-            if self._drop_stack[index] == tag:
+            if self._drop_stack[index][0] == tag:
                 del self._drop_stack[index:]
                 return True
         return False
@@ -77,7 +89,14 @@ class HTMLTextExtractor(HTMLParser):
             # not mistaken for head content.
             self._unwind_to("head")
         if tag in self._dropped_tags:
-            self._drop_stack.append(tag)
+            occurrence = self._tag_occurrence_counts.get(tag, 0) + 1
+            self._tag_occurrence_counts[tag] = occurrence
+            if (tag, occurrence) in self._skip_occurrences:
+                # This exact occurrence is the one being recovered: treat it
+                # as if it were not a dropped tag at all, so it suppresses
+                # nothing -- not even its own content.
+                return
+            self._drop_stack.append((tag, occurrence))
         elif tag == "br":
             self._parts.append("\n")
         elif tag in BLOCK_TAGS:
@@ -95,7 +114,8 @@ class HTMLTextExtractor(HTMLParser):
 
     def close(self) -> None:
         super().close()
-        self.unclosed = list(self._drop_stack)
+        self.unclosed = [tag for tag, _ in self._drop_stack]
+        self.unclosed_occurrences = list(self._drop_stack)
 
     def text(self) -> str:
         return normalize_whitespace("".join(self._parts))
@@ -108,9 +128,11 @@ def html_to_text(html: str) -> str:
     way to know where its content should have ended, and everything after it
     would otherwise be discarded. Rather than raise -- which would cost the
     caller an entire document over one malformed tag -- this does exactly one
-    recovery pass: it re-parses with those specific tag names demoted out of
-    the dropped set, so their content (and everything after them) is
-    recovered as visible text instead of silently vanishing.
+    recovery pass: it re-parses with those specific *occurrences* (tag name
+    plus position in document order, not the bare tag name) demoted out of
+    the dropped set. That way only the unclosed occurrence stops suppressing;
+    every other, well-formed element of the same name -- e.g. an earlier,
+    properly closed ``<script>`` -- is still dropped as usual.
     """
     extractor = HTMLTextExtractor()
     extractor.feed(html)
@@ -118,8 +140,9 @@ def html_to_text(html: str) -> str:
     if not extractor.unclosed:
         return extractor.text()
 
-    recovered_dropped_tags = DROPPED_TAGS - set(extractor.unclosed)
-    recovery = HTMLTextExtractor(dropped_tags=recovered_dropped_tags)
+    recovery = HTMLTextExtractor(
+        skip_occurrences=frozenset(extractor.unclosed_occurrences)
+    )
     recovery.feed(html)
     recovery.close()
     return recovery.text()

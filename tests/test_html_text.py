@@ -98,3 +98,26 @@ def test_unclosed_attribute_is_empty_when_all_tags_close():
     extractor.feed("<p>before</p><math><mi>x</mi></math>")
     extractor.close()
     assert extractor.unclosed == []
+
+
+def test_recovery_does_not_leak_other_well_formed_script_elements():
+    # Only the trailing, unclosed <script> should surrender its suppression;
+    # the earlier well-formed <script>A</script> must stay dropped since its
+    # content is JavaScript, not prose.
+    html = "<script>A</script><p>keep</p><script>B"
+    assert html_to_text(html) == "keep\n\nB"
+
+
+def test_recovery_does_not_leak_other_well_formed_style_elements():
+    html = "<style>p{color:red}</style><p>keep</p><style>x"
+    assert html_to_text(html) == "keep\n\nx"
+
+
+def test_recovery_does_not_leak_other_well_formed_math_elements():
+    html = "<math>M1</math><p>keep</p><math>M2"
+    assert html_to_text(html) == "keep\n\nM2"
+
+
+def test_recovery_does_not_leak_other_well_formed_head_elements():
+    html = "<head><title>T1</title></head><p>keep</p><head><title>T2"
+    assert html_to_text(html) == "keep\n\nT2"
