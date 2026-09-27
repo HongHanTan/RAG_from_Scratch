@@ -16,6 +16,8 @@ ANSWER_TEMPLATE = """You are answering a question using retrieved excerpts.
 Rules:
 - Use only the context below. Do not use prior knowledge.
 - If the context does not answer the question, say so plainly and stop.
+- If no documents were retrieved at all, reply that no documents were retrieved
+  and that you therefore cannot answer. Do not repeat this instruction back.
 - Cite the excerpts you used with their bracketed numbers, like [1] or [2].
 - Be concise.
 

@@ -42,7 +42,7 @@ Every stage writes into one `Trace` object (`rag/trace.py`), which is what
 
 The 38 documents total 3,064,396 characters and chunk into 5,116 pieces. The
 resulting index (`data/index.npz`) is 9.0 MB. Search over those 5,116 chunks
-takes 6–18 ms — brute-force cosine similarity, no approximate index. Embedding
+takes 2–4 ms — brute-force cosine similarity, no approximate index. Embedding
 the full corpus from scratch takes about 130 seconds on CPU.
 
 ## What grounding actually looks like
@@ -63,22 +63,22 @@ Sources:
   [5] colbert:41    score 0.530  chars 27035-27992
 
 Timings:
-  embed          36.1 ms
-  search         12.5 ms
-  generate     1202.2 ms
-  total        1250.8 ms
+  embed          96.2 ms
+  search          3.2 ms
+  generate     1565.7 ms
+  total        1665.1 ms
 ```
 
 (source excerpts and the full prompt sent, also printed by `--trace`, are
 omitted above for length)
 
-Ask the same question again and the answer comes back in under a millisecond,
+Ask the same question again and generation drops from ~1.5 s to ~2 ms,
 served from the on-disk LLM cache — and the trace says so explicitly, rather
 than silently reporting a generate time 1000x smaller and letting the reader
 assume Gemini is just fast:
 
 ```
-  generate        0.7 ms
+  generate        2.0 ms
   ...
 note: generation served from cache
 ```
@@ -121,9 +121,27 @@ space in 3D because 3D is drawable. Nothing here assumes three dimensions.
 
 **Search is exact brute force, and that is a deliberate limit.** Scoring every
 query against every chunk is one `(n_queries, 384) @ (384, n_chunks)` matmul,
-which at a few thousand chunks is sub-millisecond to a few milliseconds —
-faster than the overhead an approximate index would add. It is O(n) per query.
-Past roughly a million vectors, FAISS or HNSW becomes the right answer.
+which at a few thousand chunks takes a few milliseconds — faster than the
+overhead an approximate index would add. Vectors are L2-normalised once when
+the store is built rather than on every query; re-normalising 5,116 unit rows
+per search cost more than the matmul itself, and removing it took search from
+6.6 ms to 2.7 ms. It is O(n) per query. Past roughly a million vectors, FAISS
+or HNSW becomes the right answer.
+
+## Known limitations
+
+**`publish_date` values are approximate.** The dates in `data/metadata.json`
+were written from domain knowledge rather than read from the arXiv API, so
+some may be revision dates rather than original submission dates. They are
+adequate for the metadata filtering Phase 4 demonstrates, which only needs a
+field that partitions the corpus, but they are not authoritative.
+
+**The corpus is uneven.** It covers ColBERT, RAPTOR, DPR and HyDE well, and
+has no document that explains reciprocal rank fusion at all — which is why the
+refusal above is genuine rather than staged.
+
+**Search is O(n) per query** and the whole index lives in memory. See the note
+on brute-force search above.
 
 ## Configuration
 
