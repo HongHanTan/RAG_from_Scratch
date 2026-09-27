@@ -197,6 +197,67 @@ MRR, nDCG against a gold set) is what will actually answer that question. Any
 claim that these strategies "help" before Phase 3 runs would be a guess
 wearing a lab coat.
 
+## Benchmark
+
+Phase 3 measures retrieval — not answer quality — against a 10-question gold
+set (`evaluation/gold.json`), using `python -m evaluation.benchmark`:
+
+| Strategy | Recall@20 | MRR | nDCG@20 | DocPrec@5 | Mean ms | Questions |
+|---|---:|---:|---:|---:|---:|---:|
+| hyde | 0.558 | 0.358 | 0.315 | 0.660 | 32277 | 10 |
+| step-back | 0.475 | 0.196 | 0.225 | 0.460 | 5346 | 10 |
+| rag-fusion | 0.392 | 0.140 | 0.184 | 0.560 | 94 | 10 |
+| multi-query | 0.375 | 0.190 | 0.208 | 0.400 | 42680 | 10 |
+| decomposition | 0.333 | 0.194 | 0.187 | 0.600 | 105976 | 10 |
+| direct | 0.325 | 0.103 | 0.137 | 0.560 | 53 | 10 |
+
+Ran twice; every metric column was bit-identical between runs (`Mean ms` is
+wall-clock and drops once the LLM cache is warm, which is expected and not a
+determinism concern).
+
+`Recall@20`, `MRR` and `nDCG@20` are measured at retrieval depth 20, not the
+answer prompt's `top_k=5` — at k=5 every strategy scores near zero (plain
+retrieval measured 0.050) and there is no headroom to tell them apart.
+`DocPrec@5` is reported separately, always at 5: it is the fraction of the
+chunks that would actually reach the answer prompt that come from the
+document holding the answer, and it is robust to the chunk-level gold set
+being incomplete (see below), since it only checks which paper a chunk came
+from, not which passage.
+
+**What this actually shows:** only HyDE clearly beats plain retrieval, and it
+does so on every column — recall, ranking, and document precision alike. The
+other four translation strategies are a mixed bag rather than a clean win.
+RAG-Fusion and multi-query find more relevant chunks somewhere in the top 20
+than direct retrieval does (higher Recall@20), but multi-query's `DocPrec@5`
+(0.400) is *worse* than direct's (0.560): unioning five rewritten queries can
+crowd the top 5 with chunks from the wrong paper even while surfacing more
+correct chunks further down the list. Decomposition costs roughly 2000x
+direct's latency (106s vs 53ms per question) for a Recall@20 gain of 0.008
+over direct — not a result that would survive being spent in production.
+Step-back sits in between: better recall than direct, but a lower `DocPrec@5`
+too. On this corpus, with this gold set, query translation is not a uniform
+win — most of it is a wash or a regression once ranking and document
+precision are counted, not just "was the chunk somewhere in the top 20."
+
+**Read this table narrowly:**
+
+- **10 questions.** Differences of a few points are noise at this sample
+  size; treat rank order among the four middling strategies as unreliable and
+  the hyde-vs-everything-else gap as the only difference likely to survive a
+  larger set.
+- **Retrieval only.** Nothing here measures whether the retrieved chunks
+  produce a better final answer — that is not evaluated anywhere yet.
+- **The chunk-level gold set is incomplete.** It names some answering
+  passages per question, not all of them — hand-verifying every chunk that
+  could answer a question against a 3M-character corpus is not workable. That
+  understates `Recall@20`, `MRR` and `nDCG@20` for every strategy equally, so
+  the relative comparison holds, but none of those three numbers is an
+  absolute quality score. `DocPrec@5` does not have this problem, which is
+  why it is reported alongside them.
+- **The gold set was written by the person who built the system**, which is
+  a real bias: the questions and quotes were chosen with knowledge of how the
+  corpus and chunker behave.
+
 ## Known limitations
 
 **`publish_date` values are approximate.** The dates in `data/metadata.json`
@@ -233,7 +294,7 @@ forbidden package is imported anywhere in the project.
 
 - [x] **Phase 1** — core pipeline
 - [x] **Phase 2** — query translation: multi-query, RAG-Fusion, decomposition, step-back, HyDE
-- [ ] **Phase 3** — evaluation harness: Recall@k, MRR, nDCG
+- [x] **Phase 3** — evaluation harness: Recall@k, MRR, nDCG, DocPrec@k
 - [ ] **Phase 4** — routing and query construction
 - [ ] **Phase 5** — multi-representation indexing and RAPTOR
 - [ ] **Phase 6** — ColBERT-style late interaction, and a retrieval inspector dashboard

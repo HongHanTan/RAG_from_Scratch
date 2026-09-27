@@ -25,7 +25,7 @@ FORBIDDEN = [
     "dotenv",
 ]
 
-SOURCE_DIRS = ["rag", "scripts", "tests"]
+SOURCE_DIRS = ["rag", "scripts", "tests", "evaluation"]
 
 
 def _forbidden_import_pattern(forbidden: str) -> re.Pattern:
