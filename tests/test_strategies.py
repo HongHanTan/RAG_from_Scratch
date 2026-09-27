@@ -520,6 +520,9 @@ def test_a_failed_sub_answer_does_not_abort_the_whole_strategy(tiny_corpus: Conf
         "What is vector similarity?\nHope that helps!",
         "Here you go:\nWhat is vector similarity?\nLet me know if you need more.",
         "**What is vector similarity?**",
+        "Are you asking about this in general?\nWhat is vector similarity?",
+        "What is vector similarity?\nAnything else you'd like?",
+        "Let me know if this helps.\nWhat is vector similarity?",
     ],
 )
 def test_step_back_finds_the_question_among_model_chatter(
@@ -532,3 +535,12 @@ def test_step_back_finds_the_question_among_model_chatter(
     ctx = build_context(tiny_corpus, llm=FakeLLM(reply))
     get_strategy("step-back").run("how does cosine handle magnitude?", ctx)
     assert ctx.trace.queries[1] == "What is vector similarity?"
+
+
+def test_step_back_keeps_a_question_that_addresses_the_reader(tiny_corpus: Config):
+    # The chatter filter drops candidates that talk to the reader, but a
+    # legitimate general question can contain "you". When filtering would
+    # leave nothing, the unfiltered candidates are used instead.
+    ctx = build_context(tiny_corpus, llm=FakeLLM("How do you measure vector similarity?"))
+    get_strategy("step-back").run("q", ctx)
+    assert ctx.trace.queries[1] == "How do you measure vector similarity?"
