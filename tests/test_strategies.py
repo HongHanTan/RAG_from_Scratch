@@ -206,3 +206,49 @@ def test_rag_fusion_degrades_when_there_is_no_llm(tiny_corpus: Config):
     ctx = build_context(tiny_corpus, llm=None)
     result = get_strategy("rag-fusion").run("q", ctx)
     assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
+
+
+# --- step-back -----------------------------------------------------------------
+
+def test_step_back_asks_for_a_more_general_question(tiny_corpus: Config):
+    llm = FakeLLM("What is vector similarity?")
+    ctx = build_context(tiny_corpus, llm=llm)
+    get_strategy("step-back").run("how does cosine handle magnitude?", ctx)
+    assert "how does cosine handle magnitude?" in llm.prompts[0]
+
+
+def test_step_back_searches_both_questions(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM("What is vector similarity?"))
+    get_strategy("step-back").run("specific question", ctx)
+    assert ctx.trace.queries == ["specific question", "What is vector similarity?"]
+
+
+def test_step_back_records_the_general_question_as_a_translation_step(
+    tiny_corpus: Config,
+):
+    ctx = build_context(tiny_corpus, llm=FakeLLM("What is vector similarity?"))
+    get_strategy("step-back").run("q", ctx)
+    assert [(s.kind, s.text) for s in ctx.trace.translation] == [
+        ("step_back", "What is vector similarity?")
+    ]
+
+
+def test_step_back_returns_at_most_top_k_deduplicated(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM("general question"))
+    result = get_strategy("step-back").run("q", ctx)
+    ids = [r.chunk.chunk_id for r in result.retrieved]
+    assert len(ids) == len(set(ids))
+    assert len(ids) <= tiny_corpus.top_k
+
+
+def test_step_back_degrades_when_the_llm_fails(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FailingLLM())
+    result = get_strategy("step-back").run("q", ctx)
+    assert result.retrieved
+    assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
+
+
+def test_step_back_degrades_when_the_general_question_is_blank(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM("   "))
+    result = get_strategy("step-back").run("q", ctx)
+    assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)

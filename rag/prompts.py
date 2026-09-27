@@ -78,6 +78,18 @@ Reply with one query per line, numbered. No other text.
 Question: {question}"""
 
 
+STEP_BACK_TEMPLATE = """Given a specific question, write one more general
+question about the underlying concept or principle it depends on.
+
+The general question should be broad enough that a document explaining the
+background would answer it, while staying on the same subject. Do not answer
+either question.
+
+Reply with the general question only, on one line.
+
+Specific question: {question}"""
+
+
 def parse_query_list(raw: str) -> list[str]:
     """Extract one query per line from a numbered or bulleted model reply.
 
