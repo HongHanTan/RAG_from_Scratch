@@ -4,6 +4,12 @@ Row i of `vectors` is the embedding of `chunks[i]`. That invariant is the whole
 data structure — there is no index, no graph, no quantisation. Persistence is
 .npz with the chunk metadata alongside as a JSON blob, loaded with
 allow_pickle=False so the index file is never an arbitrary-code vector.
+
+Vectors are L2-normalised once, at construction (which `load` goes through
+too), rather than on every `search` call. `Embedder.encode` already returns
+unit vectors, so re-normalising all n rows per query bought nothing but cost:
+on 5,116 rows it was the majority of `search`'s time. A query is a single row,
+so normalising it per call is free and still happens in `search`.
 """
 
 from __future__ import annotations
@@ -15,12 +21,13 @@ from pathlib import Path
 import numpy as np
 
 from rag.chunking import Chunk
-from rag.similarity import cosine_similarity, top_k
+from rag.embedding import l2_normalize
+from rag.similarity import top_k
 
 
 @dataclass
 class VectorStore:
-    vectors: np.ndarray       # (n_chunks, dim) float32
+    vectors: np.ndarray       # (n_chunks, dim) float32, L2-normalised
     chunks: list[Chunk]
 
     def __post_init__(self) -> None:
@@ -32,6 +39,7 @@ class VectorStore:
                 f"{self.vectors.shape[0]} vectors but {len(self.chunks)} chunks; "
                 "row i must be the embedding of chunks[i]"
             )
+        self.vectors = l2_normalize(self.vectors)
 
     def __len__(self) -> int:
         return len(self.chunks)
@@ -47,7 +55,9 @@ class VectorStore:
         query_vectors = np.atleast_2d(np.asarray(query_vectors, dtype=np.float32))
         if len(self.chunks) == 0:
             return [[] for _ in range(query_vectors.shape[0])]
-        scores = cosine_similarity(query_vectors, self.vectors)
+        # self.vectors is already unit-length (see __post_init__); only the
+        # (small) query batch needs normalising here.
+        scores = l2_normalize(query_vectors) @ self.vectors.T
         indices, values = top_k(scores, k)
         return [
             [(self.chunks[int(i)], float(s)) for i, s in zip(row_i, row_s)]

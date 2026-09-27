@@ -100,3 +100,24 @@ def test_save_creates_missing_parent_directories(tmp_path):
 def test_loading_a_missing_index_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         VectorStore.load(tmp_path / "nope.npz")
+
+
+# --- normalisation at the store boundary (search stops re-normalising) ------
+
+
+def test_vectors_are_unit_length_after_construction():
+    # Rows of very different magnitude, none already unit length.
+    vectors = np.array([[3.0, 4.0, 0.0], [0.0, 0.0, 5.0]], dtype=np.float32)
+    store = VectorStore(vectors=vectors, chunks=[_chunk(0), _chunk(1)])
+    norms = np.linalg.norm(store.vectors, axis=1)
+    np.testing.assert_allclose(norms, [1.0, 1.0], atol=1e-6)
+
+
+def test_vectors_are_unit_length_after_load(tmp_path):
+    vectors = np.array([[3.0, 4.0, 0.0], [1.0, 1.0, 1.0]], dtype=np.float32)
+    store = VectorStore(vectors=vectors, chunks=[_chunk(0), _chunk(1)])
+    path = tmp_path / "index.npz"
+    store.save(path)
+    loaded = VectorStore.load(path)
+    norms = np.linalg.norm(loaded.vectors, axis=1)
+    np.testing.assert_allclose(norms, [1.0, 1.0], atol=1e-6)
