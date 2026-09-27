@@ -516,6 +516,19 @@ def test_decomposition_caps_the_number_of_sub_questions(tiny_corpus: Config):
     assert kinds.count("sub_question") == 3
 
 
+def test_decomposition_trace_queries_matches_what_was_actually_searched(
+    tiny_corpus: Config,
+):
+    # The original question is never embedded or searched by this strategy --
+    # only the sub-questions are. Every other strategy keeps `trace.queries`
+    # exactly equal to what was searched, and Phase 3 may rely on that
+    # invariant, so decomposition must not include the unsearched question.
+    ctx = build_context(tiny_corpus, llm=_scripted())
+    get_strategy("decomposition").run("q", ctx)
+    assert ctx.trace.queries == ["What is a vector?", "How is similarity measured?"]
+    assert "q" not in ctx.trace.queries
+
+
 def test_decomposition_returns_at_most_top_k(tiny_corpus: Config):
     ctx = build_context(tiny_corpus, llm=_scripted())
     result = get_strategy("decomposition").run("q", ctx)

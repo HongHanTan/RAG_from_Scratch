@@ -96,7 +96,7 @@ class DecompositionStrategy:
                 ctx.trace.add_translation("sub_answer", answer)
                 pairs.append((sub_question, answer))
 
-            ctx.trace.queries = [question, *sub_questions]
+            ctx.trace.queries = sub_questions
             retrieved = merge_best_score(all_results)[: ctx.config.top_k]
 
         extra = (
