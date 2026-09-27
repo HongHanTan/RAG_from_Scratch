@@ -128,9 +128,16 @@ arXiv papers and abstracts (RAG, HyDE, RAPTOR, ColBERT, Self-RAG, Step-Back
 Prompting, IR-CoT) plus engineering blog posts — strips markup, and writes
 `data/corpus/*.txt` alongside `data/metadata.json`.
 
+Full text comes from ar5iv (`ar5iv.labs.arxiv.org/html/<id>`), which renders
+essentially all arXiv papers as HTML including older ones, so ingestion is
+HTML-only. PDF extraction is deliberately out of scope: no PDF library is in the
+allowed dependency list and writing an extractor from scratch is a separate piece
+of work that teaches nothing about retrieval. HTML is stripped with a subclass of
+the standard library's `html.parser.HTMLParser`, not BeautifulSoup.
+
 The resulting text files are committed. Three reasons: the repository clones and
 runs offline, the gold evaluation set stays pinned to a corpus that cannot drift,
-and the fetch script still demonstrates real HTML and PDF parsing.
+and the fetch script still demonstrates real markup parsing and text cleaning.
 
 35–40 documents rather than ~20, because RAPTOR clustering needs enough material
 to produce meaningful clusters. Raising this number later would invalidate the
