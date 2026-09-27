@@ -4,9 +4,12 @@
     python -m rag ask "what is reciprocal rank fusion?"
     python -m rag ask "..." --k 8 --trace
     python -m rag ask "..." --no-llm       # retrieval only, no API key needed
+    python -m rag ask "..." --strategy hyde --queries
+    python -m rag ask "..." --strategy decomposition --decomposition-mode independent
 
 The embedder and LLM are built by injected factories so the CLI can be tested
-without loading a model or holding a key.
+without loading a model or holding a key. `--strategy` other than `direct`
+needs an LLM, so it is rejected together with `--no-llm`.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from rag.config import Config
 from rag.embedding import Embedder
 from rag.llm import GeminiLLM, LLMError
 from rag.pipeline import ask, build_index, load_index
+from rag.strategies import STRATEGY_NAMES
 from rag.trace import Trace
 
 
@@ -38,7 +42,7 @@ def default_llm(config: Config) -> GeminiLLM:
     )
 
 
-def format_trace(trace: Trace, verbose: bool) -> str:
+def format_trace(trace: Trace, verbose: bool, show_queries: bool = False) -> str:
     lines: list[str] = []
 
     if trace.answer:
@@ -46,6 +50,14 @@ def format_trace(trace: Trace, verbose: bool) -> str:
     else:
         lines.append("(no answer generated)")
     lines.append("")
+
+    if (show_queries or verbose) and trace.translation:
+        lines.append(f"Strategy: {trace.strategy}")
+        for step in trace.translation:
+            label = step.kind.replace("_", " ")
+            text = step.text if verbose else step.text[:120]
+            lines.append(f"  {label}: {text}")
+        lines.append("")
 
     lines.append("Sources:")
     for item in trace.retrieved:
@@ -64,9 +76,11 @@ def format_trace(trace: Trace, verbose: bool) -> str:
 
     if verbose:
         lines.append("")
+        lines.append(f"Strategy: {trace.strategy}")
         lines.append("Timings:")
         for timing in trace.timings:
-            lines.append(f"  {timing.name:<10} {timing.ms:8.1f} ms")
+            indent = "  " * (timing.depth + 1)
+            lines.append(f"{indent}{timing.name:<10} {timing.ms:8.1f} ms")
         lines.append(f"  {'total':<10} {trace.total_ms:8.1f} ms")
         if trace.prompt:
             lines.append("")
@@ -89,6 +103,23 @@ def _build_parser() -> argparse.ArgumentParser:
     ask_parser.add_argument("--k", type=int, help="number of chunks to retrieve")
     ask_parser.add_argument("--trace", action="store_true", help="show scores, timings, prompt")
     ask_parser.add_argument("--no-llm", action="store_true", help="retrieve only")
+    ask_parser.add_argument(
+        "--strategy",
+        choices=sorted(STRATEGY_NAMES),
+        default="direct",
+        help="query translation strategy (default: direct)",
+    )
+    ask_parser.add_argument(
+        "--decomposition-mode",
+        choices=("recursive", "independent"),
+        default="recursive",
+        help="how decomposition combines sub-answers (default: recursive)",
+    )
+    ask_parser.add_argument(
+        "--queries",
+        action="store_true",
+        help="show the queries the strategy generated",
+    )
 
     return parser
 
@@ -126,6 +157,14 @@ def _run(args, embedder_factory, llm_factory) -> int:
     if args.command == "ask" and args.k is not None and args.k < 0:
         raise ValueError(f"--k must not be negative, got {args.k}")
 
+    if args.command == "ask" and args.no_llm and args.strategy != "direct":
+        raise ValueError(
+            f"--no-llm cannot be combined with --strategy {args.strategy}: "
+            f"{args.strategy} needs the LLM to rewrite the question, so it "
+            "would silently fall back to direct retrieval. Use --strategy "
+            "direct, or drop --no-llm."
+        )
+
     overrides = {}
     for field in ("chunk_tokens", "chunk_overlap"):
         value = getattr(args, field, None)
@@ -153,8 +192,21 @@ def _run(args, embedder_factory, llm_factory) -> int:
         except LLMError as exc:
             print(f"{exc}\nretrieving without generation", file=sys.stderr)
 
-    trace = ask(args.question, store, embedder, llm, config, k=args.k)
-    print(format_trace(trace, verbose=args.trace))
+    strategy_options: dict = {}
+    if args.strategy == "decomposition":
+        strategy_options["mode"] = args.decomposition_mode
+
+    trace = ask(
+        args.question,
+        store,
+        embedder,
+        llm,
+        config,
+        k=args.k,
+        strategy=args.strategy,
+        strategy_options=strategy_options,
+    )
+    print(format_trace(trace, verbose=args.trace, show_queries=args.queries))
     return 0
 
 

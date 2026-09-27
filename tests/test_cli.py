@@ -271,3 +271,114 @@ def test_malformed_metadata_reports_cleanly(tiny_corpus, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "metadata" in err.lower()
     assert "Traceback" not in err
+
+
+# --- Task 9: --strategy, trace rendering ------------------------------------
+
+
+def test_strategy_flag_reaches_the_pipeline(tiny_corpus, monkeypatch, capsys):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+    seen = {}
+
+    real_ask = __import__("rag.__main__", fromlist=["ask"]).ask
+
+    def spy(question, store, embedder, llm, config, k=None, strategy="direct",
+            strategy_options=None):
+        seen["strategy"] = strategy
+        seen["options"] = strategy_options
+        return real_ask(question, store, embedder, llm, config, k=k,
+                        strategy=strategy, strategy_options=strategy_options)
+
+    monkeypatch.setattr("rag.__main__.ask", spy)
+    assert main(["ask", "q", "--strategy", "direct"], **_factories()) == 0
+    assert seen["strategy"] == "direct"
+
+
+def test_decomposition_mode_is_passed_as_a_strategy_option(
+    tiny_corpus, monkeypatch, capsys
+):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+    seen = {}
+
+    def spy(question, store, embedder, llm, config, k=None, strategy="direct",
+            strategy_options=None):
+        seen["options"] = strategy_options
+        from rag.trace import Trace
+
+        return Trace(question=question)
+
+    monkeypatch.setattr("rag.__main__.ask", spy)
+    main(
+        ["ask", "q", "--strategy", "decomposition", "--decomposition-mode",
+         "independent"],
+        **_factories(),
+    )
+    assert seen["options"] == {"mode": "independent"}
+
+
+def test_an_llm_strategy_with_no_llm_is_rejected(tiny_corpus, monkeypatch, capsys):
+    # --no-llm means no rewrites are possible, so every strategy would silently
+    # degrade to direct. Saying so beats pretending the flag did something.
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+    assert main(["ask", "q", "--strategy", "hyde", "--no-llm"], **_factories()) == 1
+    err = capsys.readouterr().err
+    assert "--no-llm" in err
+    assert "hyde" in err
+
+
+def test_direct_strategy_with_no_llm_is_allowed(tiny_corpus, monkeypatch, capsys):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+    assert main(["ask", "q", "--strategy", "direct", "--no-llm"], **_factories()) == 0
+
+
+def test_unknown_strategy_is_rejected_by_argparse(tiny_corpus, monkeypatch):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    with pytest.raises(SystemExit):
+        main(["ask", "q", "--strategy", "nope"], **_factories())
+
+
+def test_queries_flag_prints_the_rewritten_queries():
+    from rag.trace import Trace
+
+    trace = Trace(question="original")
+    trace.strategy = "multi-query"
+    trace.queries = ["original", "rewrite one", "rewrite two"]
+    trace.add_translation("query", "rewrite one")
+    trace.add_translation("query", "rewrite two")
+    output = format_trace(trace, verbose=False, show_queries=True)
+    assert "rewrite one" in output
+    assert "rewrite two" in output
+
+
+def test_trace_output_names_the_strategy():
+    from rag.trace import Trace
+
+    trace = Trace(question="q")
+    trace.strategy = "rag-fusion"
+    assert "rag-fusion" in format_trace(trace, verbose=True)
+
+
+def test_verbose_output_shows_translation_steps():
+    from rag.trace import Trace
+
+    trace = Trace(question="q")
+    trace.strategy = "hyde"
+    trace.add_translation("hypothetical", "a hypothetical passage")
+    assert "a hypothetical passage" in format_trace(trace, verbose=True)
+
+
+def test_nested_timings_are_indented_in_verbose_output():
+    from rag.trace import StageTiming, Trace
+
+    trace = Trace(question="q")
+    trace.timings = [
+        StageTiming("embed", 1.0, depth=1),
+        StageTiming("decompose", 5.0, depth=0),
+    ]
+    output = format_trace(trace, verbose=True)
+    assert "  embed" in output
+    assert "5.0" in output

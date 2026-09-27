@@ -128,6 +128,70 @@ per search cost more than the matmul itself, and removing it took search from
 6.6 ms to 2.7 ms. It is O(n) per query. Past roughly a million vectors, FAISS
 or HNSW becomes the right answer.
 
+## Strategies
+
+Phase 2 adds six query translation strategies, selected with `--strategy` (default
+`direct`) and shown with `--queries` or `--trace`. Every strategy but `direct`
+needs an LLM to produce its rewrites — combining any of them with `--no-llm`
+is rejected rather than silently degrading to plain retrieval.
+
+- **`direct`** — embeds the question as-is and searches once. The baseline
+  every other strategy is compared against.
+- **`multi-query`** — asks the LLM for several differently-worded rewrites of
+  the question, searches each, and merges results by best cosine score across
+  all of them.
+- **`rag-fusion`** — the same rewrites as `multi-query`, but merged by
+  Reciprocal Rank Fusion instead of best score, so a chunk that ranks
+  consistently well across queries outranks one that scores highest in only
+  one.
+- **`step-back`** — asks the LLM for one more general question about the
+  underlying concept, and searches both the original and the general question.
+- **`hyde`** — asks the LLM to write a short hypothetical passage that would
+  answer the question, and searches with that passage's embedding (plus the
+  original question, by default) on the idea that a fake answer is closer in
+  embedding space to a real answer than the question is.
+- **`decomposition`** — splits the question into sub-questions, answers each
+  from its own retrieval, and feeds the sub-answers to the final prompt as
+  working notes. Two modes via `--decomposition-mode`: `recursive` carries
+  each sub-answer into the next sub-question's prompt (for parts that depend
+  on each other), `independent` answers every sub-question on its own and
+  concatenates them (cheaper, correct when the parts don't depend on each
+  other).
+
+Worked example — the rewrites `multi-query` actually generated for one
+question, real output, not illustrative text:
+
+```
+$ python -m rag ask "How does ColBERT score a document?" --strategy multi-query --queries
+ColBERT estimates relevance by having each query embedding interact with all
+document embeddings via a MaxSim operator...
+
+Strategy: multi-query
+  query: ColBERT late interaction scoring mechanism explanation
+  query: How does ColBERT compute relevance scores between query and document
+  query: ColBERT max-similarity operator vector math
+  query: Document ranking algorithm in ColBERT retrieval model
+  query: ColBERT token embeddings scoring process
+
+Sources:
+  [1] colbert (chunk 38)
+  [2] colbert (chunk 75)
+  [3] colbert (chunk 46)
+  [4] colbert (chunk 13)
+  [5] colbertv2 (chunk 41)
+```
+
+Compare that to `--strategy direct` on the same question, which returns
+`colbertv2:41, colbert:65, colbert:46, colbert:14, colbert:41` — three of the
+five chunks differ. **Nothing here is measured.** The strategies retrieve a
+different set of chunks than direct retrieval, and sometimes chunks that
+direct's top-k misses entirely (as above), but nothing in this phase says
+whether that set is *better* — more relevant, more sufficient for a correct
+answer — only that it's different. Phase 3's evaluation harness (Recall@k,
+MRR, nDCG against a gold set) is what will actually answer that question. Any
+claim that these strategies "help" before Phase 3 runs would be a guess
+wearing a lab coat.
+
 ## Known limitations
 
 **`publish_date` values are approximate.** The dates in `data/metadata.json`
@@ -163,7 +227,7 @@ forbidden package is imported anywhere in the project.
 ## Roadmap
 
 - [x] **Phase 1** — core pipeline
-- [ ] **Phase 2** — query translation: multi-query, RAG-Fusion, decomposition, step-back, HyDE
+- [x] **Phase 2** — query translation: multi-query, RAG-Fusion, decomposition, step-back, HyDE
 - [ ] **Phase 3** — evaluation harness: Recall@k, MRR, nDCG
 - [ ] **Phase 4** — routing and query construction
 - [ ] **Phase 5** — multi-representation indexing and RAPTOR
