@@ -13,8 +13,8 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 | 3 | Corpus fetch script + fetch corpus | ✅ | `cdd5aee`, `ae41c4f` | 38 docs, all titles verified; 46 tests |
 | 4 | Document loader | ✅ | `e6943af`, `e138637` | 13 tests; Important fixed (actionable metadata errors) |
 | 5 | Token-aware chunking | ✅ | `f72b505` | 18 tests; 5,116 chunks, offsets independently verified |
-| 6 | Embeddings | 🔄 | | model already cached |
-| 7 | Similarity and top-k | ⬜ | | |
+| 6 | Embeddings | ✅ | `dfde3c1` | 9 fast + 4 slow tests; real retrieval verified |
+| 7 | Similarity and top-k | 🔄 | | |
 | 8 | Vector store | ⬜ | | |
 | 9 | Trace | ⬜ | | |
 | 10 | Gemini client (cache + retry) | ⬜ | | needs API key to verify model id |
@@ -90,6 +90,18 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   One `isinstance(record, dict)` check plus one test closes the class.
 
 ## Decisions and deviations
+
+- **Retrieval quality sanity check (Task 6).** Embedded 853 chunks spanning all 38
+  documents and queried three of the plan's demo questions. "How does ColBERT score a
+  document?" returns the ColBERT paper's own text at 0.55/0.53 — real semantic matching.
+  But **the corpus has no dedicated source explaining reciprocal rank fusion**, the
+  plan's headline demo question; it returns reranking papers at ~0.37. The plan already
+  expected hits from `rag_survey`/`rankgpt`, so this is consistent rather than broken,
+  but Phase 3's gold set should not assume a strong RRF answer exists. Consider adding
+  a source that covers RRF directly when Phase 4 re-runs the fetch.
+- **Similarity magnitudes run low** (~0.3 for a good match, ~0.55 for an excellent one).
+  Normal for all-MiniLM-L6-v2 on long technical prose; absolute values matter less than
+  ranking. Worth remembering before treating a 0.4 score as a weak result.
 
 - **Corpus date split is thin.** Of 38 documents, 36 are pre-2024 and only 2 (`raptor`,
   `crag`) are 2024. Phase 4 demos `publish_date < 2024`, which technically works but
