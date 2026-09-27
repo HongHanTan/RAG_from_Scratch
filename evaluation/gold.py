@@ -77,6 +77,11 @@ def load_gold(path: Path, documents: list[Document]) -> list[GoldQuestion]:
             )
         spans = []
         for quote in quotes:
+            if not isinstance(quote, str):
+                raise ValueError(
+                    f"gold question {question_id}: 'quotes' must be a list of "
+                    f"strings, got {quote!r} ({type(quote).__name__})"
+                )
             occurrences = doc.text.count(quote)
             if occurrences == 0:
                 raise ValueError(

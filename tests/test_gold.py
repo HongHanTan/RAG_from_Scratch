@@ -141,6 +141,22 @@ def test_a_bare_string_instead_of_a_list_is_an_error(tmp_path):
         load_gold(path, _docs())
 
 
+def test_a_non_string_quote_in_the_list_is_an_error(tmp_path):
+    # doc.text.count(quote) raises a bare TypeError for a non-string element
+    # ("count() argument 1 must be str, not int"), naming nothing -- every
+    # other malformed-gold-set case raises a ValueError naming the question
+    # id, and this one should too.
+    path = _write(tmp_path, [
+        {
+            "id": "q1", "question": "q", "doc_id": "alpha",
+            "quotes": ["measures the angle", 42], "why": "w",
+        }
+    ])
+    with pytest.raises(ValueError, match="q1") as excinfo:
+        load_gold(path, _docs())
+    assert "42" in str(excinfo.value)
+
+
 def test_questions_load_in_file_order(tmp_path):
     path = _write(tmp_path, [
         {"id": "q2", "question": "b", "doc_id": "beta", "quotes": ["fusion"], "why": "w"},
