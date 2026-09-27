@@ -10,8 +10,8 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 |---|------|--------|---------|-------|
 | 1 | Scaffolding, Config, test fixtures | ✅ | `1ae1bad` | 9 tests pass; review clean |
 | 2 | HTML text extraction | ✅ | `77f3c41`..`b497946` | 31 tests pass; 3 review rounds, all findings fixed |
-| 3 | Corpus fetch script + fetch corpus | 🔄 | | needs network |
-| 4 | Document loader | ⬜ | | |
+| 3 | Corpus fetch script + fetch corpus | ✅ | `cdd5aee`, `ae41c4f` | 38 docs, all titles verified; 46 tests |
+| 4 | Document loader | 🔄 | | |
 | 5 | Token-aware chunking | ⬜ | | |
 | 6 | Embeddings | ⬜ | | downloads model |
 | 7 | Similarity and top-k | ⬜ | | |
@@ -41,6 +41,11 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   the same name. Confirmed: `<script>A</script><p>keep</p><script>B` leaked the
   JavaScript `A`; the `<style>` variant leaked raw CSS into the text. Fixed by
   demoting per *occurrence* rather than per name (`b497946`).
+- **Task 3, Important x2** — `metadata.json` was written only after the whole fetch
+  loop, so an interrupted run left `.txt` files with no metadata entry, which Task 4's
+  loader treats as a hard error. Proven real by a test that failed against the original
+  code. Fixed with incremental per-document writes (`ae41c4f`). Same round added 6 tests
+  for `main()`, which previously had none.
 - **Task 2, Important** — `nav` and `aside` were neither dropped nor treated as block
   elements, so sidebar chrome would splice inline into paragraph text. Added to the
   dropped set (`c89edde`). `header`/`footer` deliberately left in place: in academic
@@ -48,4 +53,16 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 
 ## Decisions and deviations
 
-_None yet._
+- **Corpus date split is thin.** Of 38 documents, 36 are pre-2024 and only 2 (`raptor`,
+  `crag`) are 2024. Phase 4 demos `publish_date < 2024`, which technically works but
+  filters out 36 of 38 — a weak demonstration. Cheap fix when Phase 4 arrives: add two
+  or three 2024–2025 papers. Not worth a refetch now.
+- **Publish dates are approximate.** They were written from domain knowledge, not read
+  from arXiv, so some may be revision dates rather than original submission dates.
+  Harmless for the date-filter demo, which only needs a field that partitions the
+  corpus, but they are not authoritative metadata.
+- **`splade.txt` opens with a ~53-char leaked LaTeX fragment.** Verified isolated: the
+  reviewer grepped all 38 files for `\command{`, `itemjoin`, `inlinelist`, `[label=`,
+  plus HTML/JS/MathML markers, and found no other occurrence anywhere. Not a systemic
+  extraction defect and not fixable via `DROPPED_TAGS` (it is literal text, not markup),
+  so left as-is.
