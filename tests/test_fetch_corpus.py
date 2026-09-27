@@ -276,3 +276,29 @@ def test_interruption_partway_through_leaves_metadata_consistent_with_disk(tmp_p
     # ...and metadata.json must describe exactly those, not the interrupted third.
     documents = _read_documents(metadata_path)
     assert set(documents.keys()) == {doc_ids[0], doc_ids[1]}
+
+
+def test_save_metadata_leaves_no_temporary_file(tmp_path):
+    from scripts.fetch_corpus import save_metadata
+
+    target = tmp_path / "metadata.json"
+    save_metadata(target, {"a": {"title": "A"}})
+    assert [p.name for p in tmp_path.iterdir()] == ["metadata.json"]
+
+
+def test_save_metadata_does_not_destroy_the_old_file_on_failure(tmp_path):
+    import json as _json
+
+    from scripts.fetch_corpus import save_metadata
+
+    target = tmp_path / "metadata.json"
+    save_metadata(target, {"a": {"title": "A"}})
+    good = target.read_text(encoding="utf-8")
+
+    class Unserialisable:
+        pass
+
+    with pytest.raises(TypeError):
+        save_metadata(target, {"a": Unserialisable()})
+    assert target.read_text(encoding="utf-8") == good
+    assert _json.loads(good)["documents"]["a"]["title"] == "A"

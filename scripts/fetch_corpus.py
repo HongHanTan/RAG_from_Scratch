@@ -18,6 +18,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from rag.atomic import write_atomic
 from scripts.html_text import html_to_text
 
 AR5IV = "https://ar5iv.labs.arxiv.org/html/"
@@ -107,17 +108,23 @@ def fetch_text(url: str, opener=urllib.request.urlopen) -> str:
 
 
 def save_metadata(path: Path, documents: dict[str, dict[str, str]]) -> None:
-    """Write metadata.json atomically-enough for our purposes: one shot, whole file.
+    """Write metadata.json atomically: temporary file, then rename.
 
     Called after every document that lands on disk (see main()) so that an
     interruption at any point - Ctrl+C, a crash, a killed process - leaves
     this file consistent with whatever .txt files already exist, rather than
     only being correct once an entire run finishes.
+
+    Writing in place would undercut that: a kill mid-write leaves truncated
+    JSON, and the next run then fails on a parse error instead of on a
+    missing entry.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps({"documents": documents}, indent=2, ensure_ascii=False),
-        encoding="utf-8",
+    write_atomic(
+        path,
+        lambda target: target.write_text(
+            json.dumps({"documents": documents}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        ),
     )
 
 
