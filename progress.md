@@ -49,8 +49,8 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-2-query-translation.md](docs/supe
 |---|------|--------|---------|-------|
 | 1 | Trace depth, score labels, translation steps | ✅ | `ff3ab86` | 254 tests; review clean |
 | 2 | Reciprocal rank fusion + best-score merge | ✅ | `3d2347e` | 269 tests; RRF math hand-verified |
-| 3 | Strategy protocol, context, direct | 🔄 | | |
-| 4 | Multi-query | ⬜ | | |
+| 3 | Strategy protocol, context, direct | ✅ | `28e5166` | 282 tests; no import cycle |
+| 4 | Multi-query | 🔄 | | |
 | 5 | RAG-Fusion | ⬜ | | |
 | 6 | Step-back | ⬜ | | |
 | 7 | HyDE | ⬜ | | |
