@@ -54,6 +54,10 @@ def build_answer_prompt(
     `extra_context` holds text the strategy derived (decomposition's
     sub-answers). It is labelled separately from the retrieved excerpts so the
     model does not cite generated text as though it were a source.
+
+    Chunk text may contain braces; it is not re-formatted, only inserted after
+    `str.format` has already scanned the template, so `{}` in a document
+    cannot break or inject anything.
     """
     context = format_context(retrieved)
     if extra_context:

@@ -20,7 +20,7 @@ from rag.strategies.base import StrategyContext, StrategyResult, degrade_to_dire
 
 
 CHATTER = re.compile(
-    r"\b(?:you|your|i|me|my|let me know|hope|anything else|here you go)\b",
+    r"\b(?:you|your|me|my|let me know|hope|anything else|here you go)\b",
     re.IGNORECASE,
 )
 """Marks a line that talks to the reader rather than about the subject.
@@ -28,6 +28,13 @@ CHATTER = re.compile(
 The general question is about the subject matter; a preamble or sign-off is
 about the interaction. Second and first person is the cheapest signal that
 separates them.
+
+The bare word "i" is deliberately not one of the alternatives. Matched
+case-insensitively it also matches the "I" in "I/O", "AI", or similar
+abbreviations, which are plausible substance in an IR corpus rather than the
+model addressing the reader ("What is I/O batching in dense retrieval?" is a
+legitimate step-back question, not chatter). The remaining markers still
+catch the common preambles and sign-offs.
 """
 
 

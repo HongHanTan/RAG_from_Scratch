@@ -6,8 +6,9 @@ text splitter, the embedding pooling, the similarity math and the prompt
 assembly are all written out. `tests/test_no_frameworks.py` enforces this by
 failing the suite if any of them is ever imported.
 
-Phase 1 — the core indexing, retrieval and generation loop — is complete. See
-the roadmap below for what comes next, and the design spec for the full plan:
+Phase 1 (core indexing, retrieval and generation) and Phase 2 (query
+translation) are complete. See the roadmap below for what comes next, and the
+design spec for the full plan:
 [`docs/superpowers/specs/2026-09-27-rag-from-scratch-design.md`](docs/superpowers/specs/2026-09-27-rag-from-scratch-design.md).
 
 ## Quick start
@@ -130,13 +131,17 @@ or HNSW becomes the right answer.
 
 ## Strategies
 
-Phase 2 adds six query translation strategies, selected with `--strategy` (default
-`direct`) and shown with `--queries` or `--trace`. Every strategy but `direct`
-needs an LLM to produce its rewrites — combining any of them with `--no-llm`
-is rejected rather than silently degrading to plain retrieval.
+Phase 2 adds five query translation strategies on top of the `direct`
+baseline, selected with `--strategy` (default `direct`) and shown with
+`--queries` or `--trace`. Every strategy but `direct` needs an LLM to produce
+its rewrites — combining any of them with `--no-llm` is rejected rather than
+silently degrading to plain retrieval, and a translation strategy whose LLM
+cannot be built at all (missing key, bad auth, exhausted quota) fails the run
+rather than silently degrading to `direct`.
 
-- **`direct`** — embeds the question as-is and searches once. The baseline
-  every other strategy is compared against.
+- **`direct`** — embeds the question as-is and searches once. Not a
+  translation strategy itself; the baseline every one of the five is compared
+  against.
 - **`multi-query`** — asks the LLM for several differently-worded rewrites of
   the question, searches each, and merges results by best cosine score across
   all of them.

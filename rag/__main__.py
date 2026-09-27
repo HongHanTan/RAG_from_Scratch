@@ -51,12 +51,20 @@ def format_trace(trace: Trace, verbose: bool, show_queries: bool = False) -> str
         lines.append("(no answer generated)")
     lines.append("")
 
-    if (show_queries or verbose) and trace.translation:
+    show_strategy = show_queries or verbose
+    if show_strategy:
         lines.append(f"Strategy: {trace.strategy}")
+    if show_strategy and trace.translation:
         for step in trace.translation:
             label = step.kind.replace("_", " ")
-            text = step.text if verbose else step.text[:120]
+            if verbose:
+                text = step.text
+            else:
+                text = step.text[:120]
+                if len(step.text) > 120:
+                    text += "…"
             lines.append(f"  {label}: {text}")
+    if show_strategy:
         lines.append("")
 
     lines.append("Sources:")
@@ -76,7 +84,6 @@ def format_trace(trace: Trace, verbose: bool, show_queries: bool = False) -> str
 
     if verbose:
         lines.append("")
-        lines.append(f"Strategy: {trace.strategy}")
         lines.append("Timings:")
         for timing in trace.timings:
             indent = "  " * (timing.depth + 1)
@@ -112,7 +119,7 @@ def _build_parser() -> argparse.ArgumentParser:
     ask_parser.add_argument(
         "--decomposition-mode",
         choices=("recursive", "independent"),
-        default="recursive",
+        default=None,
         help="how decomposition combines sub-answers (default: recursive)",
     )
     ask_parser.add_argument(
@@ -165,6 +172,18 @@ def _run(args, embedder_factory, llm_factory) -> int:
             "direct, or drop --no-llm."
         )
 
+    if (
+        args.command == "ask"
+        and args.decomposition_mode is not None
+        and args.strategy != "decomposition"
+    ):
+        raise ValueError(
+            f"--decomposition-mode cannot be combined with --strategy "
+            f"{args.strategy}: it only affects --strategy decomposition and "
+            "would otherwise be silently ignored. Use --strategy "
+            "decomposition, or drop --decomposition-mode."
+        )
+
     overrides = {}
     for field in ("chunk_tokens", "chunk_overlap"):
         value = getattr(args, field, None)
@@ -199,7 +218,7 @@ def _run(args, embedder_factory, llm_factory) -> int:
 
     strategy_options: dict = {}
     if args.strategy == "decomposition":
-        strategy_options["mode"] = args.decomposition_mode
+        strategy_options["mode"] = args.decomposition_mode or "recursive"
 
     trace = ask(
         args.question,

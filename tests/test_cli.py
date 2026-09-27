@@ -319,6 +319,45 @@ def test_decomposition_mode_is_passed_as_a_strategy_option(
     assert seen["options"] == {"mode": "independent"}
 
 
+def test_decomposition_mode_with_a_different_strategy_is_rejected(
+    tiny_corpus, monkeypatch, capsys
+):
+    # --decomposition-mode only means something for --strategy decomposition.
+    # Silently ignoring it on another strategy would make the user think it
+    # took effect when it did nothing at all.
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+    assert (
+        main(
+            ["ask", "q", "--strategy", "hyde", "--decomposition-mode", "independent"],
+            **_factories(),
+        )
+        == 1
+    )
+    err = capsys.readouterr().err
+    assert "--decomposition-mode" in err
+    assert "hyde" in err
+
+
+def test_decomposition_mode_defaults_to_recursive_when_not_passed(
+    tiny_corpus, monkeypatch, capsys
+):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+    seen = {}
+
+    def spy(question, store, embedder, llm, config, k=None, strategy="direct",
+            strategy_options=None):
+        seen["options"] = strategy_options
+        from rag.trace import Trace
+
+        return Trace(question=question)
+
+    monkeypatch.setattr("rag.__main__.ask", spy)
+    main(["ask", "q", "--strategy", "decomposition"], **_factories())
+    assert seen["options"] == {"mode": "recursive"}
+
+
 def test_an_llm_strategy_with_no_llm_is_rejected(tiny_corpus, monkeypatch, capsys):
     # --no-llm means no rewrites are possible, so every strategy would silently
     # degrade to direct. Saying so beats pretending the flag did something.
@@ -419,6 +458,36 @@ def test_verbose_output_shows_translation_steps():
     trace.strategy = "hyde"
     trace.add_translation("hypothetical", "a hypothetical passage")
     assert "a hypothetical passage" in format_trace(trace, verbose=True)
+
+
+def test_strategy_line_is_not_duplicated_in_verbose_output_with_translation():
+    from rag.trace import Trace
+
+    trace = Trace(question="q")
+    trace.strategy = "hyde"
+    trace.add_translation("hypothetical", "a hypothetical passage")
+    output = format_trace(trace, verbose=True)
+    assert output.count("Strategy: hyde") == 1
+
+
+def test_truncated_translation_text_gets_an_ellipsis():
+    from rag.trace import Trace
+
+    trace = Trace(question="q")
+    trace.strategy = "hyde"
+    trace.add_translation("hypothetical", "x" * 200)
+    output = format_trace(trace, verbose=False, show_queries=True)
+    assert "…" in output
+
+
+def test_untruncated_translation_text_gets_no_ellipsis():
+    from rag.trace import Trace
+
+    trace = Trace(question="q")
+    trace.strategy = "hyde"
+    trace.add_translation("hypothetical", "short passage")
+    output = format_trace(trace, verbose=False, show_queries=True)
+    assert "…" not in output
 
 
 def test_nested_timings_are_indented_in_verbose_output():

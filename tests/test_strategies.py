@@ -598,6 +598,16 @@ def test_step_back_finds_the_question_among_model_chatter(
     assert ctx.trace.queries[1] == "What is vector similarity?"
 
 
+def test_step_back_does_not_treat_io_as_chatter(tiny_corpus: Config):
+    # \bi\b (case-insensitive) matches the "I" in "I/O", so a preamble plus a
+    # legitimate general question about I/O would have the real question
+    # wrongly filtered out as chatter, leaving the preamble picked instead.
+    reply = "Sure, here's a broader question:\nWhat is I/O batching in dense retrieval?"
+    ctx = build_context(tiny_corpus, llm=FakeLLM(reply))
+    get_strategy("step-back").run("q", ctx)
+    assert ctx.trace.queries[1] == "What is I/O batching in dense retrieval?"
+
+
 def test_step_back_keeps_a_question_that_addresses_the_reader(tiny_corpus: Config):
     # The chatter filter drops candidates that talk to the reader, but a
     # legitimate general question can contain "you". When filtering would
