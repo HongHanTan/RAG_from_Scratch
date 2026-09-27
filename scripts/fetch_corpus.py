@@ -106,6 +106,21 @@ def fetch_text(url: str, opener=urllib.request.urlopen) -> str:
     return html_to_text(raw.decode("utf-8", errors="replace"))
 
 
+def save_metadata(path: Path, documents: dict[str, dict[str, str]]) -> None:
+    """Write metadata.json atomically-enough for our purposes: one shot, whole file.
+
+    Called after every document that lands on disk (see main()) so that an
+    interruption at any point - Ctrl+C, a crash, a killed process - leaves
+    this file consistent with whatever .txt files already exist, rather than
+    only being correct once an entire run finishes.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"documents": documents}, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Fetch the corpus.")
     parser.add_argument("--corpus-dir", type=Path, default=Path("data/corpus"))
@@ -128,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
         if target.is_file() and not args.force:
             print(f"skip   {source.doc_id} (exists)")
             documents[source.doc_id] = metadata_record(source)
+            save_metadata(args.metadata, documents)
             continue
         try:
             text = fetch_text(source_url(source))
@@ -141,14 +157,10 @@ def main(argv: list[str] | None = None) -> int:
             continue
         target.write_text(text, encoding="utf-8")
         documents[source.doc_id] = metadata_record(source)
+        save_metadata(args.metadata, documents)
         print(f"ok     {source.doc_id}  {len(text):>7} chars  {source.title[:60]}")
         time.sleep(args.delay)
 
-    args.metadata.parent.mkdir(parents=True, exist_ok=True)
-    args.metadata.write_text(
-        json.dumps({"documents": documents}, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
     print(f"\n{len(documents)} documents in {args.metadata}")
     if failures:
         print(f"{len(failures)} failed: {', '.join(failures)}", file=sys.stderr)

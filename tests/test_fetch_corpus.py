@@ -1,12 +1,21 @@
+import json
+import urllib.error
+
 import pytest
 
+import scripts.fetch_corpus as fetch_corpus
 from scripts.fetch_corpus import (
+    MIN_CHARS,
     SOURCES,
     Source,
     fetch_text,
+    main,
     metadata_record,
     source_url,
 )
+
+LONG_TEXT = "x" * (MIN_CHARS + 100)
+SHORT_TEXT = "too short"
 
 
 def test_arxiv_sources_resolve_to_ar5iv_html():
@@ -95,3 +104,175 @@ def test_publish_dates_are_iso_and_span_the_2024_boundary():
     dates = [datetime.date.fromisoformat(s.publish_date) for s in SOURCES]
     assert any(d.year < 2024 for d in dates)
     assert any(d.year >= 2024 for d in dates)
+
+
+# --- main() CLI loop -------------------------------------------------------
+
+
+def _read_documents(metadata_path):
+    return json.loads(metadata_path.read_text(encoding="utf-8"))["documents"]
+
+
+def test_skip_if_exists_does_not_refetch_but_writes_metadata(tmp_path, monkeypatch):
+    corpus_dir = tmp_path / "corpus"
+    corpus_dir.mkdir()
+    metadata_path = tmp_path / "metadata.json"
+
+    doc_id = SOURCES[0].doc_id
+    existing_path = corpus_dir / f"{doc_id}.txt"
+    existing_path.write_text("PRE-EXISTING CONTENT", encoding="utf-8")
+
+    def fake_fetch_text(url):
+        raise AssertionError("fetch_text should not be called for an existing file")
+
+    monkeypatch.setattr(fetch_corpus, "fetch_text", fake_fetch_text)
+
+    rc = main([
+        "--corpus-dir", str(corpus_dir),
+        "--metadata", str(metadata_path),
+        "--only", doc_id,
+        "--delay", "0",
+    ])
+
+    assert rc == 0
+    assert existing_path.read_text(encoding="utf-8") == "PRE-EXISTING CONTENT"
+    documents = _read_documents(metadata_path)
+    assert doc_id in documents
+    assert documents[doc_id] == metadata_record(SOURCES[0])
+
+
+def test_force_refetches_existing_file(tmp_path, monkeypatch):
+    corpus_dir = tmp_path / "corpus"
+    corpus_dir.mkdir()
+    metadata_path = tmp_path / "metadata.json"
+
+    doc_id = SOURCES[0].doc_id
+    existing_path = corpus_dir / f"{doc_id}.txt"
+    existing_path.write_text("STALE CONTENT", encoding="utf-8")
+
+    monkeypatch.setattr(fetch_corpus, "fetch_text", lambda url: LONG_TEXT)
+
+    rc = main([
+        "--corpus-dir", str(corpus_dir),
+        "--metadata", str(metadata_path),
+        "--only", doc_id,
+        "--force",
+        "--delay", "0",
+    ])
+
+    assert rc == 0
+    assert existing_path.read_text(encoding="utf-8") == LONG_TEXT
+    documents = _read_documents(metadata_path)
+    assert documents[doc_id] == metadata_record(SOURCES[0])
+
+
+def test_only_fetches_the_requested_document(tmp_path, monkeypatch):
+    corpus_dir = tmp_path / "corpus"
+    corpus_dir.mkdir()
+    metadata_path = tmp_path / "metadata.json"
+
+    doc_id = SOURCES[1].doc_id
+    calls = []
+
+    def fake_fetch_text(url):
+        calls.append(url)
+        return LONG_TEXT
+
+    monkeypatch.setattr(fetch_corpus, "fetch_text", fake_fetch_text)
+
+    rc = main([
+        "--corpus-dir", str(corpus_dir),
+        "--metadata", str(metadata_path),
+        "--only", doc_id,
+        "--delay", "0",
+    ])
+
+    assert rc == 0
+    assert calls == [source_url(SOURCES[1])]
+    txt_files = sorted(p.name for p in corpus_dir.glob("*.txt"))
+    assert txt_files == [f"{doc_id}.txt"]
+    documents = _read_documents(metadata_path)
+    assert list(documents.keys()) == [doc_id]
+
+
+def test_failing_fetch_leaves_no_file_and_no_metadata_and_nonzero_exit(tmp_path, monkeypatch):
+    corpus_dir = tmp_path / "corpus"
+    corpus_dir.mkdir()
+    metadata_path = tmp_path / "metadata.json"
+
+    doc_id = SOURCES[0].doc_id
+
+    def fake_fetch_text(url):
+        raise urllib.error.URLError("boom")
+
+    monkeypatch.setattr(fetch_corpus, "fetch_text", fake_fetch_text)
+
+    rc = main([
+        "--corpus-dir", str(corpus_dir),
+        "--metadata", str(metadata_path),
+        "--only", doc_id,
+        "--delay", "0",
+    ])
+
+    assert rc == 1
+    assert not (corpus_dir / f"{doc_id}.txt").exists()
+    if metadata_path.is_file():
+        assert doc_id not in _read_documents(metadata_path)
+
+
+def test_text_below_min_chars_is_rejected_like_a_failure(tmp_path, monkeypatch):
+    corpus_dir = tmp_path / "corpus"
+    corpus_dir.mkdir()
+    metadata_path = tmp_path / "metadata.json"
+
+    doc_id = SOURCES[0].doc_id
+
+    monkeypatch.setattr(fetch_corpus, "fetch_text", lambda url: SHORT_TEXT)
+
+    rc = main([
+        "--corpus-dir", str(corpus_dir),
+        "--metadata", str(metadata_path),
+        "--only", doc_id,
+        "--delay", "0",
+    ])
+
+    assert rc == 1
+    assert not (corpus_dir / f"{doc_id}.txt").exists()
+    if metadata_path.is_file():
+        assert doc_id not in _read_documents(metadata_path)
+
+
+def test_interruption_partway_through_leaves_metadata_consistent_with_disk(tmp_path, monkeypatch):
+    corpus_dir = tmp_path / "corpus"
+    corpus_dir.mkdir()
+    metadata_path = tmp_path / "metadata.json"
+
+    doc_ids = [SOURCES[0].doc_id, SOURCES[1].doc_id, SOURCES[2].doc_id]
+    calls = []
+
+    def fake_fetch_text(url):
+        calls.append(url)
+        if len(calls) == 3:
+            raise KeyboardInterrupt()
+        return LONG_TEXT
+
+    monkeypatch.setattr(fetch_corpus, "fetch_text", fake_fetch_text)
+
+    argv = [
+        "--corpus-dir", str(corpus_dir),
+        "--metadata", str(metadata_path),
+        "--delay", "0",
+    ]
+    for doc_id in doc_ids:
+        argv += ["--only", doc_id]
+
+    with pytest.raises(KeyboardInterrupt):
+        main(argv)
+
+    # Exactly the first two documents made it to disk before the interrupt...
+    txt_files = sorted(p.name for p in corpus_dir.glob("*.txt"))
+    assert txt_files == sorted([f"{doc_ids[0]}.txt", f"{doc_ids[1]}.txt"])
+
+    # ...and metadata.json must describe exactly those, not the interrupted third.
+    documents = _read_documents(metadata_path)
+    assert set(documents.keys()) == {doc_ids[0], doc_ids[1]}
