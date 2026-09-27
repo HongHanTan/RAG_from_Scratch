@@ -117,18 +117,14 @@ def _reconfigure_streams_for_utf8() -> None:
                 pass
 
 
-def main(
-    argv: list[str] | None = None,
-    embedder_factory=default_embedder,
-    llm_factory=default_llm,
-) -> int:
-    _reconfigure_streams_for_utf8()
+def _run(args, embedder_factory, llm_factory) -> int:
+    """Execute one parsed command.
 
-    args = _build_parser().parse_args(argv)
-
+    Raises ValueError or FileNotFoundError for anything the user can fix;
+    main() turns those into an exit code and a message.
+    """
     if args.command == "ask" and args.k is not None and args.k < 0:
-        print(f"--k must not be negative, got {args.k}", file=sys.stderr)
-        return 1
+        raise ValueError(f"--k must not be negative, got {args.k}")
 
     overrides = {}
     for field in ("chunk_tokens", "chunk_overlap"):
@@ -147,11 +143,7 @@ def main(
         )
         return 0
 
-    try:
-        store = load_index(config)
-    except FileNotFoundError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+    store = load_index(config)
 
     embedder = embedder_factory(config)
     llm = None
@@ -164,6 +156,26 @@ def main(
     trace = ask(args.question, store, embedder, llm, config, k=args.k)
     print(format_trace(trace, verbose=args.trace))
     return 0
+
+
+def main(
+    argv: list[str] | None = None,
+    embedder_factory=default_embedder,
+    llm_factory=default_llm,
+) -> int:
+    """Entry point.
+
+    Every failure the user can act on -- a bad flag, an invalid config, a
+    malformed metadata.json, a missing index -- exits 1 with the message and
+    no traceback. Bugs still raise, so they stay visible.
+    """
+    _reconfigure_streams_for_utf8()
+    args = _build_parser().parse_args(argv)
+    try:
+        return _run(args, embedder_factory, llm_factory)
+    except (ValueError, FileNotFoundError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

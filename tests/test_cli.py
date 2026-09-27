@@ -227,3 +227,47 @@ def test_k_zero_still_behaves_sanely(tiny_corpus: Config, monkeypatch, capsys):
     assert main(["ask", "q", "--k", "0"], **_factories()) == 0
     err = capsys.readouterr().err
     assert "Traceback" not in err
+
+
+# --- uniform error handling --------------------------------------------------
+
+
+def _factories_that_should_not_run():
+    def boom(config):
+        raise AssertionError("factories must not run when config is invalid")
+
+    return {"embedder_factory": boom, "llm_factory": boom}
+
+
+def test_invalid_chunk_tokens_reports_cleanly(capsys):
+    assert main(["index", "--chunk-tokens", "0"], **_factories_that_should_not_run()) == 1
+    err = capsys.readouterr().err
+    assert "chunk_tokens" in err
+    assert "Traceback" not in err
+
+
+def test_chunk_overlap_larger_than_chunk_tokens_reports_cleanly(capsys):
+    assert (
+        main(["index", "--chunk-overlap", "500"], **_factories_that_should_not_run())
+        == 1
+    )
+    err = capsys.readouterr().err
+    assert "chunk_overlap" in err
+    assert "Traceback" not in err
+
+
+def test_negative_k_still_names_the_flag(capsys):
+    assert main(["ask", "q", "--k", "-1"], **_factories_that_should_not_run()) == 1
+    assert "--k" in capsys.readouterr().err
+
+
+def test_malformed_metadata_reports_cleanly(tiny_corpus, monkeypatch, capsys):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    tiny_corpus.metadata_path.write_text("{not json", encoding="utf-8")
+
+    from tests.conftest import FakeEmbedder
+
+    assert main(["index"], embedder_factory=lambda c: FakeEmbedder()) == 1
+    err = capsys.readouterr().err
+    assert "metadata" in err.lower()
+    assert "Traceback" not in err
