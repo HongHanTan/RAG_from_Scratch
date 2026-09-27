@@ -5,6 +5,7 @@ import pytest
 from rag.__main__ import format_trace, main
 from rag.chunking import Chunk
 from rag.config import Config
+from rag.llm import LLMError
 from rag.trace import RetrievedChunk, StageTiming, Trace
 from tests.conftest import FakeEmbedder, FakeLLM
 
@@ -333,6 +334,55 @@ def test_direct_strategy_with_no_llm_is_allowed(tiny_corpus, monkeypatch, capsys
     monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
     main(["index"], **_factories())
     assert main(["ask", "q", "--strategy", "direct", "--no-llm"], **_factories()) == 0
+
+
+def test_llm_build_failure_is_fatal_for_a_non_direct_strategy(
+    tiny_corpus, monkeypatch, capsys
+):
+    # A missing key, bad auth, or exhausted quota must not silently degrade
+    # every strategy to direct retrieval and exit 0 -- that would make a
+    # benchmark loop over several strategies report identical rows for all of
+    # them with no indication anything went wrong.
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+
+    def failing_llm_factory(config):
+        raise LLMError("no API key: set GOOGLE_API_KEY in the environment or in .env")
+
+    assert (
+        main(
+            ["ask", "q", "--strategy", "hyde"],
+            embedder_factory=lambda config: FakeEmbedder(),
+            llm_factory=failing_llm_factory,
+        )
+        == 1
+    )
+    err = capsys.readouterr().err
+    assert "hyde" in err
+    assert "GOOGLE_API_KEY" in err
+    assert "Traceback" not in err
+
+
+def test_llm_build_failure_still_degrades_for_the_direct_strategy(
+    tiny_corpus, monkeypatch, capsys
+):
+    # direct retrieval never needed the LLM in the first place, so a missing
+    # key should still fall back to retrieval-only rather than fail the run.
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+
+    def failing_llm_factory(config):
+        raise LLMError("no API key: set GOOGLE_API_KEY in the environment or in .env")
+
+    assert (
+        main(
+            ["ask", "q", "--strategy", "direct"],
+            embedder_factory=lambda config: FakeEmbedder(),
+            llm_factory=failing_llm_factory,
+        )
+        == 0
+    )
+    assert "retrieving without generation" in capsys.readouterr().err
 
 
 def test_unknown_strategy_is_rejected_by_argparse(tiny_corpus, monkeypatch):

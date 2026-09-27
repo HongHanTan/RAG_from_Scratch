@@ -190,6 +190,11 @@ def _run(args, embedder_factory, llm_factory) -> int:
         try:
             llm = llm_factory(config)
         except LLMError as exc:
+            if args.strategy != "direct":
+                raise ValueError(
+                    f"--strategy {args.strategy} needs an LLM to rewrite the "
+                    f"question, but one could not be built: {exc}"
+                ) from exc
             print(f"{exc}\nretrieving without generation", file=sys.stderr)
 
     strategy_options: dict = {}
