@@ -58,6 +58,23 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-2-query-translation.md](docs/supe
 | 9 | CLI `--strategy`, rendering, README | ✅ | `0ec17a5`, `dbd3eeb`, `1e4ba4f` | 352 tests |
 | — | Final whole-branch review | 🔄 | | |
 
+### Notes for the Phase 3 plan
+
+Two design constraints the final review surfaced. Both would distort the benchmark if
+missed, so fold them into the Phase 3 plan rather than discovering them in the numbers.
+
+- **Stage names are not comparable across strategies.** Four strategies emit a
+  `translate` stage that is LLM-only; decomposition emits one `decompose` stage that
+  swallows retrieval *and* N generations. `total_ms` is comparable; per-stage timings
+  are not. Do not build a per-stage latency table across strategies.
+- **`top_k` is used as both the per-query retrieval depth and the final truncation**, so
+  RAG-Fusion fuses five 5-item lists down to 5. That structurally compresses the
+  difference between `rag-fusion` and `multi-query` — the benchmark could report "no
+  difference" for reasons of plumbing rather than method. Phase 3 should give the
+  per-query depth its own knob, larger than the final k.
+- **Benchmark should hard-fail on any "degraded to direct" note**, not just trust exit
+  codes, so a silent LLM outage cannot be measured as "no technique helps".
+
 ### Phase 2 carried items
 
 - **Task 9, Minor x2** — `format_trace` prints `Strategy:` twice in verbose output when
