@@ -106,6 +106,38 @@ Keep it under 120 words.
 Question: {question}"""
 
 
+DECOMPOSE_TEMPLATE = """Break the question below into at most {n} simpler
+sub-questions that can each be looked up on their own.
+
+Each sub-question must be answerable from documents independently of the
+others, and answering all of them should be enough to answer the original.
+If the question is already simple, reply with just the original question.
+
+Reply with one sub-question per line, numbered. No other text.
+
+Question: {question}"""
+
+
+SUB_ANSWER_TEMPLATE = """Answer the sub-question using only the context below.
+If the context does not answer it, say so in one sentence.
+
+Be brief: two sentences at most. This answer is working material for a larger
+question, not a final response.
+{prior}
+Context:
+{context}
+
+Sub-question: {question}
+
+Answer:"""
+
+
+PRIOR_ANSWERS_HEADER = """
+Already established:
+{prior}
+"""
+
+
 def parse_query_list(raw: str) -> list[str]:
     """Extract one query per line from a numbered or bulleted model reply.
 

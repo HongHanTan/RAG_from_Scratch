@@ -356,3 +356,137 @@ def test_hyde_degrades_when_the_document_is_blank(tiny_corpus: Config):
     ctx = build_context(tiny_corpus, llm=FakeLLM("  \n "))
     result = get_strategy("hyde").run("q", ctx)
     assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
+
+
+# --- decomposition strategy ---------------------------------------------------
+
+
+class ScriptedLLM:
+    """Returns canned replies in order, recording the prompts it received."""
+
+    def __init__(self, replies: list[str]) -> None:
+        self.replies = list(replies)
+        self.prompts: list[str] = []
+
+    def generate(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return self.replies.pop(0) if self.replies else "fallback answer"
+
+
+DECOMPOSE_REPLY = "1. What is a vector?\n2. How is similarity measured?"
+
+
+def _scripted():
+    return ScriptedLLM([DECOMPOSE_REPLY, "A vector is a list of numbers.",
+                        "Similarity is the angle between them."])
+
+
+def test_decomposition_records_each_sub_question(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=_scripted())
+    get_strategy("decomposition").run("q", ctx)
+    kinds = [s.kind for s in ctx.trace.translation]
+    assert kinds.count("sub_question") == 2
+
+
+def test_decomposition_records_each_sub_answer(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=_scripted())
+    get_strategy("decomposition").run("q", ctx)
+    kinds = [s.kind for s in ctx.trace.translation]
+    assert kinds.count("sub_answer") == 2
+
+
+def test_decomposition_returns_sub_answers_as_extra_context(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=_scripted())
+    result = get_strategy("decomposition").run("q", ctx)
+    assert "A vector is a list of numbers." in result.extra_context
+    assert "What is a vector?" in result.extra_context
+
+
+def test_recursive_mode_feeds_earlier_answers_into_later_sub_questions(
+    tiny_corpus: Config,
+):
+    llm = _scripted()
+    ctx = build_context(tiny_corpus, llm=llm)
+    get_strategy("decomposition", mode="recursive").run("q", ctx)
+    # prompts: [decompose, sub-answer 1, sub-answer 2]
+    assert "A vector is a list of numbers." in llm.prompts[2]
+
+
+def test_independent_mode_does_not_feed_earlier_answers_forward(
+    tiny_corpus: Config,
+):
+    llm = _scripted()
+    ctx = build_context(tiny_corpus, llm=llm)
+    get_strategy("decomposition", mode="independent").run("q", ctx)
+    assert "A vector is a list of numbers." not in llm.prompts[2]
+
+
+def test_decomposition_retrieves_for_each_sub_question(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=_scripted())
+    get_strategy("decomposition").run("q", ctx)
+    assert [s.text for s in ctx.trace.translation if s.kind == "sub_question"] == [
+        "What is a vector?",
+        "How is similarity measured?",
+    ]
+
+
+def test_decomposition_nests_its_stages_so_total_ms_is_not_doubled(
+    tiny_corpus: Config,
+):
+    ctx = build_context(tiny_corpus, llm=_scripted())
+    get_strategy("decomposition").run("q", ctx)
+    top_level = [t for t in ctx.trace.timings if t.depth == 0]
+    assert [t.name for t in top_level] == ["decompose"]
+    assert any(t.depth > 0 for t in ctx.trace.timings)
+
+
+def test_decomposition_caps_the_number_of_sub_questions(tiny_corpus: Config):
+    many = "\n".join(f"{i}. question {i}" for i in range(1, 9))
+    llm = ScriptedLLM([many] + [f"answer {i}" for i in range(8)])
+    ctx = build_context(tiny_corpus, llm=llm)
+    get_strategy("decomposition", max_sub_questions=3).run("q", ctx)
+    kinds = [s.kind for s in ctx.trace.translation]
+    assert kinds.count("sub_question") == 3
+
+
+def test_decomposition_returns_at_most_top_k(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=_scripted())
+    result = get_strategy("decomposition").run("q", ctx)
+    assert len(result.retrieved) <= tiny_corpus.top_k
+
+
+def test_decomposition_rejects_an_unknown_mode():
+    with pytest.raises(ValueError, match="sideways"):
+        get_strategy("decomposition", mode="sideways")
+
+
+def test_decomposition_degrades_when_the_llm_fails(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FailingLLM())
+    result = get_strategy("decomposition").run("q", ctx)
+    assert result.retrieved
+    assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
+
+
+def test_decomposition_degrades_when_no_sub_questions_come_back(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM("   "))
+    result = get_strategy("decomposition").run("q", ctx)
+    assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
+
+
+def test_a_failed_sub_answer_does_not_abort_the_whole_strategy(tiny_corpus: Config):
+    class PartlyFailingLLM:
+        def __init__(self):
+            self.calls = 0
+
+        def generate(self, prompt: str) -> str:
+            self.calls += 1
+            if self.calls == 1:
+                return DECOMPOSE_REPLY
+            if self.calls == 2:
+                raise LLMError("rate limited")
+            return "second answer"
+
+    ctx = build_context(tiny_corpus, llm=PartlyFailingLLM())
+    result = get_strategy("decomposition").run("q", ctx)
+    assert result.retrieved
+    assert any("sub-question" in n for n in ctx.trace.notes)
