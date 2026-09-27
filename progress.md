@@ -77,6 +77,18 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   dropped set (`c89edde`). `header`/`footer` deliberately left in place: in academic
   HTML they carry title and authors.
 
+## Queued fixes (batched, dispatched after Task 6)
+
+- **Task 4, Important (round 2)** — a metadata *entry* whose value is not a mapping
+  still escapes the new error handling, because `except KeyError` does not catch the
+  resulting `TypeError`. Confirmed for three shapes, none of which names the file or
+  the document:
+  `{"documents": {"alpha": "oops"}}` -> `TypeError: string indices must be integers`;
+  `{"documents": {"alpha": null}}`   -> `TypeError: 'NoneType' object is not subscriptable`;
+  `{"documents": {"alpha": []}}`     -> `TypeError: list indices must be integers`.
+  Reintroduces exactly the non-actionable failure the `e138637` fix existed to remove.
+  One `isinstance(record, dict)` check plus one test closes the class.
+
 ## Decisions and deviations
 
 - **Corpus date split is thin.** Of 38 documents, 36 are pre-2024 and only 2 (`raptor`,
