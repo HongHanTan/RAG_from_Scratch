@@ -37,3 +37,23 @@ python -m rag ask "How does ColBERT score a document?" --trace
 
 Detail on findings, decisions and deviations:
 [docs/superpowers/phase-1-notes.md](docs/superpowers/phase-1-notes.md)
+
+---
+
+# Phase 2 — Query Translation: Progress
+
+Branch: `phase-2-query-translation` (stacked on `phase-1-core-pipeline`; neither merged to `main` yet)
+Plan: [docs/superpowers/plans/2026-09-27-phase-2-query-translation.md](docs/superpowers/plans/2026-09-27-phase-2-query-translation.md)
+
+| # | Task | Status | Commits | Notes |
+|---|------|--------|---------|-------|
+| 1 | Trace depth, score labels, translation steps | ⬜ | | fixes 3 deferred Phase 1 findings |
+| 2 | Reciprocal rank fusion + best-score merge | ⬜ | | |
+| 3 | Strategy protocol, context, direct | ⬜ | | |
+| 4 | Multi-query | ⬜ | | |
+| 5 | RAG-Fusion | ⬜ | | |
+| 6 | Step-back | ⬜ | | |
+| 7 | HyDE | ⬜ | | |
+| 8 | Decomposition (recursive + independent) | ⬜ | | largest task |
+| 9 | CLI `--strategy`, rendering, README | ⬜ | | |
+| — | Final whole-branch review | ⬜ | | |
