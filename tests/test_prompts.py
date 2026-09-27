@@ -49,6 +49,24 @@ def test_context_shows_the_score():
     assert "0.910" in format_context(_retrieved())
 
 
+def test_context_labels_a_cosine_score_as_cosine():
+    chunk = Chunk("a:0", "a", 0, "text", 0, 5, 0, 4)
+    context = format_context([RetrievedChunk(chunk=chunk, score=0.552, rank=1)])
+    assert "cosine 0.552" in context
+
+
+def test_context_labels_a_fused_score_as_rrf():
+    # After fusion the number is ~0.03, not a similarity. Labelling both
+    # "score" makes fusion look like a catastrophic quality drop.
+    chunk = Chunk("a:0", "a", 0, "text", 0, 5, 0, 4)
+    retrieved = [
+        RetrievedChunk(chunk=chunk, score=0.0328, rank=1, score_kind="rrf")
+    ]
+    context = format_context(retrieved)
+    assert "rrf 0.033" in context
+    assert "cosine" not in context
+
+
 def test_empty_retrieval_produces_an_explicit_marker_not_a_blank():
     # A blank context makes the model hallucinate freely; saying so does not.
     assert format_context([]) == "(no documents retrieved)"

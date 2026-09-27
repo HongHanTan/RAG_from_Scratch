@@ -82,5 +82,71 @@ def test_to_dict_is_json_serialisable():
     assert decoded["retrieved"][0]["score"] == 0.75
     assert decoded["retrieved"][0]["rank"] == 1
     assert decoded["retrieved"][0]["chunk"]["chunk_id"] == "d:0"
-    assert decoded["timings"][0] == {"name": "embed", "ms": 1.25}
+    assert decoded["timings"][0] == {"name": "embed", "ms": 1.25, "depth": 0}
     assert decoded["total_ms"] == 1.25
+
+
+def test_nested_stages_record_their_depth():
+    trace = Trace(question="q")
+    with trace.stage("translate"):
+        with trace.stage("embed"):
+            pass
+    assert [(t.name, t.depth) for t in trace.timings] == [("embed", 1), ("translate", 0)]
+
+
+def test_total_ms_counts_only_top_level_stages():
+    # An outer stage already includes its children's time; summing both
+    # would report roughly double the real wall time.
+    trace = Trace(question="q")
+    trace.timings = [
+        StageTiming("embed", 10.0, depth=1),
+        StageTiming("search", 5.0, depth=1),
+        StageTiming("translate", 20.0, depth=0),
+    ]
+    assert trace.total_ms == 20.0
+
+
+def test_depth_unwinds_after_a_nested_stage_raises():
+    trace = Trace(question="q")
+    with trace.stage("outer"):
+        try:
+            with trace.stage("inner"):
+                raise RuntimeError("boom")
+        except RuntimeError:
+            pass
+        with trace.stage("after"):
+            pass
+    assert [(t.name, t.depth) for t in trace.timings] == [
+        ("inner", 1),
+        ("after", 1),
+        ("outer", 0),
+    ]
+
+
+def test_strategy_defaults_to_direct():
+    assert Trace(question="q").strategy == "direct"
+
+
+def test_translation_steps_are_recorded_in_order():
+    trace = Trace(question="q")
+    trace.add_translation("query", "first rewrite")
+    trace.add_translation("hypothetical", "a fake document")
+    assert [(s.kind, s.text) for s in trace.translation] == [
+        ("query", "first rewrite"),
+        ("hypothetical", "a fake document"),
+    ]
+
+
+def test_to_dict_includes_strategy_and_translation():
+    import json
+
+    trace = Trace(question="q")
+    trace.strategy = "hyde"
+    trace.add_translation("hypothetical", "text")
+    with trace.stage("outer"):
+        with trace.stage("inner"):
+            pass
+    decoded = json.loads(json.dumps(trace.to_dict()))
+    assert decoded["strategy"] == "hyde"
+    assert decoded["translation"] == [{"kind": "hypothetical", "text": "text"}]
+    assert decoded["timings"][0]["depth"] == 1

@@ -44,6 +44,13 @@ class RetrievedChunk:
     chunk: Chunk
     score: float
     rank: int   # 1-based
+    score_kind: str = "cosine"
+    """What `score` means: "cosine" from a plain search, "rrf" after fusion.
+
+    Fused scores are around 0.03 where cosine scores are around 0.5, so a
+    display that calls both "score" makes fusion look like a collapse in
+    quality. The name travels with the number.
+    """
 
 
 def window_bounds(n_tokens: int, size: int, overlap: int) -> list[tuple[int, int]]:

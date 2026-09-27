@@ -37,7 +37,7 @@ def format_context(retrieved: list[RetrievedChunk]) -> str:
     for item in retrieved:
         blocks.append(
             f"[{item.rank}] source: {item.chunk.doc_id}, chunk {item.chunk.index}, "
-            f"score {item.score:.3f}\n{item.chunk.text}"
+            f"{item.score_kind} {item.score:.3f}\n{item.chunk.text}"
         )
     return "\n\n".join(blocks)
 
