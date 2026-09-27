@@ -1,0 +1,101 @@
+{
+  "questions": [
+    {
+      "id": "colbert-maxsim",
+      "question": "How does ColBERT score a document against a query?",
+      "doc_id": "colbert",
+      "quotes": [
+        "every query embedding interacts with all document embeddings via a MaxSim operator, which computes maximum similarity"
+      ],
+      "why": "Direct vocabulary match. Baseline case plain retrieval should handle."
+    },
+    {
+      "id": "raptor-clustering",
+      "question": "Why does RAPTOR cluster and summarise chunks?",
+      "doc_id": "raptor",
+      "quotes": [
+        "recursively embedding, clustering, and summarizing chunks of text, constructing a tree with differing levels of summarization from the bottom up",
+        "Our clustering algorithm is based on Gaussian Mixture Models (GMMs), an approach that offers both flexibility and a probabilistic framework"
+      ],
+      "why": "Direct match. Two passages answer it: the abstract's framing and the method section's mechanism."
+    },
+    {
+      "id": "dpr-encoder",
+      "question": "What kind of encoder does dense passage retrieval train?",
+      "doc_id": "dpr",
+      "quotes": [
+        "embeddings are learned from a small number of questions and passages by a simple dual-encoder framework",
+        "in this work we use two independent BERT Devlin et al. 2019 networks (base, uncased) and take the representation at the [CLS] token as the output"
+      ],
+      "why": "Direct match; the body states the architecture concretely where the abstract only names it."
+    },
+    {
+      "id": "selfrag-tokens",
+      "question": "How does Self-RAG control when it retrieves?",
+      "doc_id": "self_rag",
+      "quotes": [
+        "adaptively retrieves passages on-demand, and generates and reflects on retrieved passages and its own generations using special tokens, called reflection tokens"
+      ],
+      "why": "Direct on 'retrieves', but the mechanism is named 'reflection tokens', which the question does not say."
+    },
+    {
+      "id": "hyde-problem",
+      "question": "What problem does HyDE solve?",
+      "doc_id": "hyde",
+      "quotes": [
+        "it remains difficult to create effective fully zero-shot dense retrieval systems when no relevance label is available",
+        "we first formally define the problem of (zero-shot) dense retrieval. Then we will introduce how HyDE is designed to solve it"
+      ],
+      "why": "Vocabulary mismatch: the paper frames its problem as 'zero-shot without relevance labels'. Multi-query and HyDE should have an edge."
+    },
+    {
+      "id": "rag-memory",
+      "question": "How does RAG combine knowledge a model memorised with knowledge it looks up?",
+      "doc_id": "rag",
+      "quotes": [
+        "models which combine pre-trained parametric and non-parametric memory for language generation",
+        "An advantage of non-parametric memory models like RAG is that knowledge can be easily updated at test time"
+      ],
+      "why": "Vocabulary mismatch: 'memorised' and 'looks up' versus 'parametric' and 'non-parametric'."
+    },
+    {
+      "id": "crag-quality",
+      "question": "How does CRAG decide whether the documents it retrieved are good enough?",
+      "doc_id": "crag",
+      "quotes": [
+        "a lightweight retrieval evaluator is designed to assess the overall quality of retrieved documents for a query, returning a confidence degree",
+        "A retrieval evaluator is constructed to evaluate the relevance of the retrieved documents to the input, and estimate a confidence degree"
+      ],
+      "why": "Vocabulary mismatch: 'good enough' versus 'assess the overall quality ... confidence degree'."
+    },
+    {
+      "id": "longcontext-position",
+      "question": "Does it matter where in a long prompt the relevant passage sits?",
+      "doc_id": "lost_in_middle",
+      "quotes": [
+        "performance is often highest when relevant information occurs at the beginning or end of the input context, and significantly degrades when models must access relevant information in the middle",
+        "rapidly degrades when models must reason over information in the middle of their input context"
+      ],
+      "why": "General-concept question naming no paper or technique. Step-back's case."
+    },
+    {
+      "id": "colbertv2-tradeoff",
+      "question": "What does ColBERTv2 change about late interaction, and what does that cost?",
+      "doc_id": "colbertv2",
+      "quotes": [
+        "ColBERTv2, a retriever that couples an aggressive residual compression mechanism with a denoised supervision strategy to simultaneously improve the quality and space footprint of late interaction",
+        "with denoised supervision and residual compression, ColBERTv2 achieves the highest quality across all systems"
+      ],
+      "why": "Two-part question (what changed, and the trade-off). Decomposition's case."
+    },
+    {
+      "id": "cot-limits",
+      "question": "When does chain-of-thought reasoning fail on questions needing outside facts?",
+      "doc_id": "ircot",
+      "quotes": [
+        "They struggle, however, when the necessary knowledge is either unavailable to the LLM or not up-to-date within its parameters"
+      ],
+      "why": "General question about a limitation, phrased without the paper's vocabulary."
+    }
+  ]
+}

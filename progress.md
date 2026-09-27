@@ -162,3 +162,14 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-3-evaluation-harness.md](docs/sup
 | 5 | Ten gold questions | ⬜ | | manual judgement work |
 | 6 | Benchmark runner, CLI, README | ⬜ | | first real numbers |
 | — | Final whole-branch review | ⬜ | | |
+
+### Phase 3 carried items
+
+- **Task 1, Minor (test coverage, not a defect)** — the implementer said no existing
+  tests needed adjusting because `retrieval_depth=20` exceeds the fixture corpus's
+  chunk count. The conclusion was right, the mechanism wasn't: fixture behaviour *did*
+  change (per-query candidates went from ~3 to ~11), but no existing assertion checks
+  chunk *identity* — only counts, ranks and a score inequality. So the strategy tests
+  never exercised the depth-vs-k distinction at all, which is exactly what the plan
+  suspected. Not worth adding identity assertions to fixture tests (brittle); the real
+  coverage arrives with Task 6's benchmark, which measures identity by construction.

@@ -51,7 +51,15 @@ def test_an_empty_span_matches_nothing():
 
 def test_relevant_chunk_ids_uses_the_questions_span():
     question = GoldQuestion(
-        id="q1", question="q", doc_id="alpha", quote="x", why="w",
-        char_start=90, char_end=120,
+        id="q1", question="q", doc_id="alpha", quotes=("x",), why="w",
+        spans=((90, 120),),
     )
     assert relevant_chunk_ids(question, _chunks()) == {"a:0", "a:1"}
+
+
+def test_relevant_chunk_ids_unions_every_span():
+    question = GoldQuestion(
+        id="q1", question="q", doc_id="alpha", quotes=("x", "y"), why="w",
+        spans=((10, 20), (200, 210)),
+    )
+    assert relevant_chunk_ids(question, _chunks()) == {"a:0", "a:2"}

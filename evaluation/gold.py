@@ -22,7 +22,7 @@ from pathlib import Path
 
 from rag.loader import Document
 
-REQUIRED_FIELDS = ("id", "question", "doc_id", "quote", "why")
+REQUIRED_FIELDS = ("id", "question", "doc_id", "quotes", "why")
 
 
 @dataclass(frozen=True)
@@ -30,10 +30,17 @@ class GoldQuestion:
     id: str
     question: str
     doc_id: str
-    quote: str
+    quotes: tuple[str, ...]
     why: str
-    char_start: int
-    char_end: int
+    spans: tuple[tuple[int, int], ...]
+    """Every passage that answers this question, as half-open char ranges.
+
+    A question usually has more than one passage that answers it: a paper
+    states its contribution in the abstract and then explains it properly in
+    the body. Accepting only one makes a strategy that finds the better
+    explanation score zero, which measures the gold set rather than the
+    strategy.
+    """
 
 
 def load_gold(path: Path, documents: list[Document]) -> list[GoldQuestion]:
@@ -62,29 +69,38 @@ def load_gold(path: Path, documents: list[Document]) -> list[GoldQuestion]:
                 f"gold question {question_id} names unknown doc_id: {entry['doc_id']}"
             )
 
-        quote = entry["quote"]
-        occurrences = doc.text.count(quote)
-        if occurrences == 0:
+        quotes = entry["quotes"]
+        if isinstance(quotes, str) or not quotes:
             raise ValueError(
-                f"gold question {question_id}: quote not found in {doc.doc_id}. "
-                "It must match the document text exactly, including whitespace."
+                f"gold question {question_id}: 'quotes' must be a non-empty "
+                "list of strings"
             )
-        if occurrences > 1:
-            raise ValueError(
-                f"gold question {question_id}: quote is ambiguous, it appears "
-                f"{occurrences} times in {doc.doc_id}. Extend it until unique."
-            )
+        spans = []
+        for quote in quotes:
+            occurrences = doc.text.count(quote)
+            if occurrences == 0:
+                raise ValueError(
+                    f"gold question {question_id}: quote not found in "
+                    f"{doc.doc_id}: {quote[:60]!r}. It must match the document "
+                    "text exactly, including whitespace."
+                )
+            if occurrences > 1:
+                raise ValueError(
+                    f"gold question {question_id}: quote is ambiguous, it "
+                    f"appears {occurrences} times in {doc.doc_id}: "
+                    f"{quote[:60]!r}. Extend it until unique."
+                )
+            start = doc.text.index(quote)
+            spans.append((start, start + len(quote)))
 
-        start = doc.text.index(quote)
         gold.append(
             GoldQuestion(
                 id=question_id,
                 question=entry["question"],
                 doc_id=entry["doc_id"],
-                quote=quote,
+                quotes=tuple(quotes),
                 why=entry["why"],
-                char_start=start,
-                char_end=start + len(quote),
+                spans=tuple(spans),
             )
         )
     return gold
