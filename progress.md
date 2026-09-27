@@ -17,8 +17,8 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 | 7 | Similarity and top-k | ✅ | `7fd1286` | 16 tests; review approved, 2 Minor |
 | 8 | Vector store | ✅ | `1937bf1` | 13 tests; 6-18 ms search over 5,116 chunks; review approved |
 | 9 | Trace | ✅ | `673a407` | 8 tests; JSON contract verified |
-| 10 | Gemini client (cache + retry) | 🔄 | | key in .env; format unverified |
-| 11 | Prompt template and generation | ⬜ | | |
+| 10 | Gemini client (cache + retry) | ✅ | `31a1fba`, `920eea4` | 16 tests; live call + cache verified |
+| 11 | Prompt template and generation | 🔄 | | |
 | 12 | Pipeline | ⬜ | | |
 | 13 | CLI | ⬜ | | builds real index |
 | 14 | README + no-frameworks guard | ⬜ | | |
@@ -95,6 +95,16 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   HTML they carry title and authors.
 
 ## Decisions and deviations
+
+- **API key works despite its unusual `AQ.` prefix.** Google AI Studio keys normally
+  start with `AIza`; this one authenticated fine and lists 61 models. Stored in `.env`,
+  which is gitignored — confirmed the key string appears in no tracked file.
+- **Default model changed to `gemini-3.5-flash-lite`** (`920eea4`), replacing the
+  unverified `gemini-2.0-flash` the plan guessed. Verified present in the account
+  listing and confirmed with a live call returning `'pong'`, cached on repeat. It is
+  genuinely the newest stable flash-lite tier (2.5 -> 3.1 -> 3.5; the 3.8 entries are
+  text-to-speech). Pinned to an exact version rather than `gemini-flash-lite-latest`,
+  because the spec requires reproducible benchmark numbers.
 
 - **Brute-force search is comfortably fast at this scale**, which is the claim the README
   makes. Measured over the real 5,116-chunk index: 18.3 ms; over a synthetic matrix of
