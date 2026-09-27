@@ -28,6 +28,14 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 
 - **Task 1, Minor** — `Config` implementation is a verbatim transcription of the plan's
   reference code. Acceptable (the plan supplied working code), noted for the record.
+- **Task 3, Minor** — `save_metadata` in `scripts/fetch_corpus.py` uses a single
+  `write_text` (truncate-then-write), not a temp-file + `Path.replace` swap. A kill
+  inside that window leaves `data/metadata.json` truncated, which makes `json.loads`
+  raise on the next run — arguably worse than the missing entry the incremental write
+  was added to prevent. Not a regression (the pre-fix code had the same single-shot
+  write, just once instead of per-document). Its docstring also overclaims by saying
+  "atomically-enough". Three-line fix: write `.tmp`, then `Path.replace`. Worth doing
+  before Phase 4 re-runs the fetch to add 2024 papers.
 
 ## Resolved during execution
 
