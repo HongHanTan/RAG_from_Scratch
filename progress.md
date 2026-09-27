@@ -145,3 +145,20 @@ Question: *"What problem does HyDE solve?"* against the real 5,116-chunk index.
 
 One question is an anecdote, not a measurement — Phase 3's benchmark is what settles
 whether this holds. But it is the first sign the technique does something real.
+
+---
+
+# Phase 3 — Evaluation Harness: Progress
+
+Branch: `phase-3-evaluation` (stacked on `phase-2-query-translation`; none merged to `main`)
+Plan: [docs/superpowers/plans/2026-09-27-phase-3-evaluation-harness.md](docs/superpowers/plans/2026-09-27-phase-3-evaluation-harness.md)
+
+| # | Task | Status | Commits | Notes |
+|---|------|--------|---------|-------|
+| 1 | Retrieval depth vs top_k; optional generation | ⬜ | | touches Phase 2 strategies |
+| 2 | Gold loading, quote → span | ⬜ | | |
+| 3 | Span → overlapping chunks | ⬜ | | |
+| 4 | Recall@k, MRR, nDCG | ⬜ | | |
+| 5 | Ten gold questions | ⬜ | | manual judgement work |
+| 6 | Benchmark runner, CLI, README | ⬜ | | first real numbers |
+| — | Final whole-branch review | ⬜ | | |
