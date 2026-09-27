@@ -12,7 +12,7 @@ space, so the scores are comparable.
 from __future__ import annotations
 
 from rag.llm import LLMError
-from rag.prompts import STEP_BACK_TEMPLATE
+from rag.prompts import STEP_BACK_TEMPLATE, parse_query_list
 from rag.similarity import merge_best_score
 from rag.strategies.base import StrategyContext, StrategyResult, degrade_to_direct
 
@@ -30,7 +30,16 @@ class StepBackStrategy:
         except LLMError as exc:
             return degrade_to_direct(question, ctx, f"step-back failed: {exc}")
 
-        general = raw.strip().splitlines()[0].strip() if raw.strip() else ""
+        # parse_query_list only drops unmarked chatter when some other line
+        # IS marked (see its docstring). The model here is asked for a single
+        # unmarked line, so a preamble it adds anyway ("Sure, here's a more
+        # general question:") is not filtered out and survives as its own
+        # candidate alongside the real question. Preambles precede the
+        # payload and the template asks for no sign-off, so the last
+        # candidate is the question; a bare reply or a single numbered line
+        # both leave exactly one candidate, so this is a no-op for them.
+        candidates = parse_query_list(raw)
+        general = candidates[-1] if candidates else ""
         if not general:
             return degrade_to_direct(
                 question, ctx, "step-back produced no general question"

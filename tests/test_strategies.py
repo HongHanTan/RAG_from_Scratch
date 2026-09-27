@@ -295,6 +295,25 @@ def test_step_back_degrades_when_the_general_question_is_blank(tiny_corpus: Conf
     assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
 
 
+def test_step_back_strips_a_leading_preamble(tiny_corpus: Config):
+    reply = "Sure, here's a more general question:\nWhat is vector similarity?"
+    ctx = build_context(tiny_corpus, llm=FakeLLM(reply))
+    get_strategy("step-back").run("q", ctx)
+    assert ctx.trace.queries == ["q", "What is vector similarity?"]
+
+
+def test_step_back_handles_a_bare_question_with_no_preamble(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM("What is vector similarity?"))
+    get_strategy("step-back").run("q", ctx)
+    assert ctx.trace.queries == ["q", "What is vector similarity?"]
+
+
+def test_step_back_handles_a_numbered_single_item_reply(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM("1. What is vector similarity?"))
+    get_strategy("step-back").run("q", ctx)
+    assert ctx.trace.queries == ["q", "What is vector similarity?"]
+
+
 # --- hyde ------------------------------------------------------------------
 
 HYDE_REPLY = (
