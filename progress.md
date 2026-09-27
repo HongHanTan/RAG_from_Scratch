@@ -19,8 +19,8 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 | 9 | Trace | ✅ | `673a407` | 8 tests; review approved |
 | 10 | Gemini client (cache + retry) | ✅ | `31a1fba`, `920eea4` | 16 tests; live call + cache verified |
 | 11 | Prompt template and generation | ✅ | `ff64a4f` | 16 tests; grounding verified against off-corpus question |
-| 12 | Pipeline | 🔄 | | |
-| 13 | CLI | ⬜ | | builds real index |
+| 12 | Pipeline | ✅ | `a093547` | 16 tests; full index built, end-to-end ask() works |
+| 13 | CLI | 🔄 | | index already built |
 | 14 | README + no-frameworks guard | ⬜ | | |
 | — | Final whole-branch review | ⬜ | | |
 
@@ -42,6 +42,14 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   re-deriving that slice could never fail. Caught by the Task 5 reviewer. Replaced with
   a real check (token-surface correspondence and monotonicity over 766k tokens), which
   found zero genuine offset errors.
+- **Task 11, Minor** — `format_context` puts the cosine score in each context block's
+  header (`score 0.552`). A small risk the model reasons about relevance metadata
+  rather than content; no such drift observed in the real-corpus checks. Keeping it,
+  because Phase 6's dashboard surfaces the same numbers and it makes `--trace` output
+  self-explaining — but it is a prompt-design choice, not an oversight.
+- **Task 11, Minor** — the template never explicitly mentions the
+  `(no documents retrieved)` marker; refusal in that case relies on the general
+  "context does not answer the question" rule. It works, but implicitly.
 - **Task 9, Minor (informational)** — `total_ms` on an empty trace returns int `0`
   rather than float `0.0`. Serialises identically and compares equal; noted only so
   nobody is surprised by the type.
@@ -101,6 +109,16 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   HTML they carry title and authors.
 
 ## Decisions and deviations
+
+- **DEVIATION FROM PLAN: README demo question changed.** The plan uses "What is
+  reciprocal rank fusion?" as the headline demo throughout, and against the real index
+  it returns a refusal — correctly, since no corpus document explains RRF. Measured
+  alternatives: "How does ColBERT score a document?" (sources `colbert`/`colbertv2`,
+  precise cited answer), "Why does RAPTOR cluster documents?" (sources `raptor` only),
+  "What is dense passage retrieval?" (sources `dpr`/`contriever`). The ColBERT question
+  becomes the headline; the RRF question is kept as the honest-refusal demo, which
+  showcases grounding rather than hiding the gap. Departs from the plan's letter to
+  serve its intent.
 
 - **Grounding verified, not assumed (Task 11).** Beyond the happy path, the system was
   asked "What is the capital of Australia and what is its population?" — a fact the
