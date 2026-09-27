@@ -189,6 +189,14 @@ def test_multi_query_truncates_rewrites_to_n(tiny_corpus: Config):
     assert len(ctx.trace.translation) == 3
 
 
+def test_multi_query_records_a_merge_stage(tiny_corpus: Config):
+    # merge_best_score is the combination step Mean ms (warm) claims to cover;
+    # it must show up in the trace or the timing column silently excludes it.
+    ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
+    get_strategy("multi-query").run("q", ctx)
+    assert "merge" in [t.name for t in ctx.trace.timings]
+
+
 def test_rag_fusion_scores_are_labelled_rrf(tiny_corpus: Config):
     ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
     result = get_strategy("rag-fusion").run("q", ctx)
@@ -247,6 +255,12 @@ def test_rag_fusion_truncates_rewrites_to_n(tiny_corpus: Config):
     get_strategy("rag-fusion", n=3).run("q", ctx)
     assert len(ctx.trace.queries) == 4
     assert len(ctx.trace.translation) == 3
+
+
+def test_rag_fusion_records_a_merge_stage(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
+    get_strategy("rag-fusion").run("q", ctx)
+    assert "merge" in [t.name for t in ctx.trace.timings]
 
 
 # --- step-back -----------------------------------------------------------------
@@ -312,6 +326,12 @@ def test_step_back_handles_a_numbered_single_item_reply(tiny_corpus: Config):
     ctx = build_context(tiny_corpus, llm=FakeLLM("1. What is vector similarity?"))
     get_strategy("step-back").run("q", ctx)
     assert ctx.trace.queries == ["q", "What is vector similarity?"]
+
+
+def test_step_back_records_a_merge_stage(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM("What is vector similarity?"))
+    get_strategy("step-back").run("q", ctx)
+    assert "merge" in [t.name for t in ctx.trace.timings]
 
 
 # --- hyde ------------------------------------------------------------------
@@ -423,6 +443,20 @@ def test_hyde_degrades_when_the_document_is_blank(tiny_corpus: Config):
     ctx = build_context(tiny_corpus, llm=FakeLLM("  \n "))
     result = get_strategy("hyde").run("q", ctx)
     assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
+
+
+def test_hyde_records_a_merge_stage(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(HYDE_REPLY))
+    get_strategy("hyde").run("q", ctx)
+    assert "merge" in [t.name for t in ctx.trace.timings]
+
+
+def test_hyde_records_a_merge_stage_when_the_question_is_excluded(tiny_corpus: Config):
+    # merge_best_score runs here instead of fusion, but it is still the
+    # combination step and must still be timed.
+    ctx = build_context(tiny_corpus, llm=FakeLLM(HYDE_REPLY))
+    get_strategy("hyde", include_question=False).run("q", ctx)
+    assert "merge" in [t.name for t in ctx.trace.timings]
 
 
 # --- decomposition strategy ---------------------------------------------------

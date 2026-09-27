@@ -51,6 +51,6 @@ class RagFusionStrategy:
         queries = [question, *rewrites]
         ctx.trace.queries = queries
         lists = ctx.search(queries, ctx.config.retrieval_depth)
-        return StrategyResult(
-            retrieved=reciprocal_rank_fusion(lists)[: ctx.config.top_k]
-        )
+        with ctx.trace.stage("merge"):
+            fused = reciprocal_rank_fusion(lists)
+        return StrategyResult(retrieved=fused[: ctx.config.top_k])

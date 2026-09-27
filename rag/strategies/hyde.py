@@ -57,8 +57,9 @@ class HydeStrategy:
         queries = [question, document] if self.include_question else [document]
         ctx.trace.queries = queries
         lists = ctx.search(queries, ctx.config.retrieval_depth)
-        if self.include_question:
-            merged = reciprocal_rank_fusion(lists)
-        else:
-            merged = merge_best_score(lists)
+        with ctx.trace.stage("merge"):
+            if self.include_question:
+                merged = reciprocal_rank_fusion(lists)
+            else:
+                merged = merge_best_score(lists)
         return StrategyResult(retrieved=merged[: ctx.config.top_k])

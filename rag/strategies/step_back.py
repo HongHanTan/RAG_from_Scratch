@@ -93,4 +93,6 @@ class StepBackStrategy:
         queries = [question, general]
         ctx.trace.queries = queries
         lists = ctx.search(queries, ctx.config.retrieval_depth)
-        return StrategyResult(retrieved=merge_best_score(lists)[: ctx.config.top_k])
+        with ctx.trace.stage("merge"):
+            merged = merge_best_score(lists)
+        return StrategyResult(retrieved=merged[: ctx.config.top_k])
