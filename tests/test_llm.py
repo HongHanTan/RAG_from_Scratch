@@ -99,6 +99,31 @@ def test_different_prompts_do_not_share_a_cache_entry(tmp_path):
     assert llm.generate("b") == "two"
 
 
+# --- cache visibility ---------------------------------------------------------
+
+def test_last_call_cached_is_false_on_a_fresh_call(tmp_path):
+    llm = _llm(tmp_path, ["hello"])
+    llm.generate("prompt")
+    assert llm.last_call_cached is False
+
+
+def test_last_call_cached_is_true_on_a_cache_hit(tmp_path):
+    llm = _llm(tmp_path, ["hello"])
+    llm.generate("prompt")
+    llm.generate("prompt")
+    assert llm.last_call_cached is True
+
+
+def test_last_call_cached_updates_across_calls(tmp_path):
+    llm = _llm(tmp_path, ["one", "two"])
+    llm.generate("a")
+    assert llm.last_call_cached is False
+    llm.generate("a")
+    assert llm.last_call_cached is True
+    llm.generate("b")
+    assert llm.last_call_cached is False
+
+
 # --- retry ------------------------------------------------------------------
 
 def test_transient_failure_is_retried(tmp_path):

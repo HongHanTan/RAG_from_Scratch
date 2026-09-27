@@ -49,3 +49,39 @@ def test_llm_failure_is_recorded_as_a_note_and_yields_no_answer():
     assert answer is None
     assert trace.answer is None
     assert any("rate limited" in n for n in trace.notes)
+
+
+# --- cache visibility ---------------------------------------------------------
+
+class CacheReportingLLM:
+    """An LLM stand-in that reports whether its last call was cached."""
+
+    def __init__(self, response: str = "the answer", cached: bool = False) -> None:
+        self.response = response
+        self.last_call_cached = cached
+        self.prompts: list[str] = []
+
+    def generate(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return self.response
+
+
+def test_cache_hit_is_noted_on_the_trace():
+    trace = Trace(question="q")
+    generate_answer(CacheReportingLLM(cached=True), "q", _retrieved(), trace)
+    assert any("cache" in n for n in trace.notes)
+
+
+def test_cache_miss_is_not_noted_on_the_trace():
+    trace = Trace(question="q")
+    generate_answer(CacheReportingLLM(cached=False), "q", _retrieved(), trace)
+    assert not any("cache" in n for n in trace.notes)
+
+
+def test_llm_without_cache_attribute_still_works():
+    # FakeLLM has no last_call_cached attribute; generate_answer must not
+    # blow up looking for it, and must not fabricate a cache note.
+    trace = Trace(question="q")
+    answer = generate_answer(FakeLLM("the answer"), "q", _retrieved(), trace)
+    assert answer == "the answer"
+    assert not any("cache" in n for n in trace.notes)

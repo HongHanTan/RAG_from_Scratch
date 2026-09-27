@@ -53,6 +53,7 @@ class GeminiLLM:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._sleep = sleep
         self.call_count = 0
+        self.last_call_cached = False
 
         if client is not None:
             self._client = client
@@ -86,6 +87,7 @@ class GeminiLLM:
         key = cache_key(self.model, prompt, self.temperature)
         cached = self._read_cache(key)
         if cached is not None:
+            self.last_call_cached = True
             return cached
 
         last_error: Exception | None = None
@@ -101,6 +103,7 @@ class GeminiLLM:
                 if not text:
                     raise LLMError("model returned an empty response")
                 self._write_cache(key, prompt, text)
+                self.last_call_cached = False
                 return text
             except LLMError:
                 raise

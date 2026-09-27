@@ -28,5 +28,7 @@ def generate_answer(
         except LLMError as exc:
             trace.note(f"generation failed: {exc}")
             return None
+    if getattr(llm, "last_call_cached", False):
+        trace.note("generation served from cache")
     trace.answer = answer
     return answer
