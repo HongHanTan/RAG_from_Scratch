@@ -105,3 +105,107 @@ def test_empty_corpus_yields_empty_results():
     indices, values = top_k(np.zeros((2, 0)), 5)
     assert indices.shape == (2, 0)
     assert values.shape == (2, 0)
+
+
+from rag.chunking import Chunk, RetrievedChunk
+from rag.similarity import merge_best_score, reciprocal_rank_fusion
+
+
+def _rc(chunk_id: str, score: float, rank: int) -> RetrievedChunk:
+    doc, _, index = chunk_id.partition(":")
+    chunk = Chunk(chunk_id, doc, int(index), f"text {chunk_id}", 0, 5, 0, 6)
+    return RetrievedChunk(chunk=chunk, score=score, rank=rank)
+
+
+# --- reciprocal rank fusion --------------------------------------------------
+
+def test_rrf_scores_match_the_hand_computed_formula():
+    # a is rank 1 in list one and rank 2 in list two:
+    #   1/(60+1) + 1/(60+2) = 0.016393... + 0.016129... = 0.032522...
+    # b is rank 2 in list one only: 1/(60+2) = 0.016129...
+    lists = [[_rc("d:0", 0.9, 1), _rc("d:1", 0.8, 2)], [_rc("d:2", 0.7, 1), _rc("d:0", 0.6, 2)]]
+    fused = reciprocal_rank_fusion(lists)
+    by_id = {r.chunk.chunk_id: r.score for r in fused}
+    assert by_id["d:0"] == pytest.approx(1 / 61 + 1 / 62)
+    assert by_id["d:1"] == pytest.approx(1 / 62)
+    assert by_id["d:2"] == pytest.approx(1 / 61)
+
+
+def test_rrf_ranks_a_chunk_found_by_two_queries_above_one_found_by_one():
+    lists = [[_rc("d:0", 0.5, 1), _rc("d:1", 0.4, 2)], [_rc("d:0", 0.3, 2), _rc("d:2", 0.9, 1)]]
+    fused = reciprocal_rank_fusion(lists)
+    assert fused[0].chunk.chunk_id == "d:0"
+
+
+def test_rrf_ignores_the_original_similarity_scores():
+    # Rank is all that matters: a chunk with a poor cosine score that ranks
+    # first in two lists must beat one with a great score in a single list.
+    lists = [[_rc("d:0", 0.01, 1)], [_rc("d:0", 0.01, 1)], [_rc("d:9", 0.99, 1)]]
+    fused = reciprocal_rank_fusion(lists)
+    assert fused[0].chunk.chunk_id == "d:0"
+
+
+def test_rrf_reranks_from_one_and_is_descending():
+    lists = [[_rc("d:0", 0.9, 1), _rc("d:1", 0.8, 2), _rc("d:2", 0.7, 3)]]
+    fused = reciprocal_rank_fusion(lists)
+    assert [r.rank for r in fused] == [1, 2, 3]
+    assert [r.score for r in fused] == sorted((r.score for r in fused), reverse=True)
+
+
+def test_rrf_marks_its_scores_as_rrf():
+    fused = reciprocal_rank_fusion([[_rc("d:0", 0.9, 1)]])
+    assert fused[0].score_kind == "rrf"
+
+
+def test_rrf_deduplicates_by_chunk_id():
+    lists = [[_rc("d:0", 0.9, 1)], [_rc("d:0", 0.8, 1)], [_rc("d:0", 0.7, 1)]]
+    assert len(reciprocal_rank_fusion(lists)) == 1
+
+
+def test_rrf_of_no_lists_is_empty():
+    assert reciprocal_rank_fusion([]) == []
+
+
+def test_rrf_of_empty_lists_is_empty():
+    assert reciprocal_rank_fusion([[], []]) == []
+
+
+def test_rrf_k_constant_is_configurable():
+    lists = [[_rc("d:0", 0.9, 1)]]
+    assert reciprocal_rank_fusion(lists, k=0)[0].score == pytest.approx(1.0)
+
+
+def test_rrf_ties_break_deterministically_by_chunk_id():
+    # Two chunks at identical rank in identical lists must come back in the
+    # same order on every run, or Phase 3's benchmark drifts for no reason.
+    lists = [[_rc("d:1", 0.5, 1)], [_rc("d:0", 0.5, 1)]]
+    assert [r.chunk.chunk_id for r in reciprocal_rank_fusion(lists)] == ["d:0", "d:1"]
+
+
+# --- best-score merge --------------------------------------------------------
+
+def test_merge_keeps_the_highest_score_for_a_repeated_chunk():
+    lists = [[_rc("d:0", 0.4, 1)], [_rc("d:0", 0.9, 1)]]
+    merged = merge_best_score(lists)
+    assert len(merged) == 1
+    assert merged[0].score == pytest.approx(0.9)
+
+
+def test_merge_sorts_by_score_and_reranks_from_one():
+    lists = [[_rc("d:0", 0.4, 1), _rc("d:1", 0.9, 2)]]
+    merged = merge_best_score(lists)
+    assert [r.chunk.chunk_id for r in merged] == ["d:1", "d:0"]
+    assert [r.rank for r in merged] == [1, 2]
+
+
+def test_merge_keeps_scores_labelled_cosine():
+    assert merge_best_score([[_rc("d:0", 0.4, 1)]])[0].score_kind == "cosine"
+
+
+def test_merge_of_nothing_is_empty():
+    assert merge_best_score([]) == []
+
+
+def test_merge_ties_break_deterministically_by_chunk_id():
+    lists = [[_rc("d:1", 0.5, 1), _rc("d:0", 0.5, 2)]]
+    assert [r.chunk.chunk_id for r in merge_best_score(lists)] == ["d:0", "d:1"]
