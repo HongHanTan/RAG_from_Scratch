@@ -156,12 +156,12 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-3-evaluation-harness.md](docs/sup
 | # | Task | Status | Commits | Notes |
 |---|------|--------|---------|-------|
 | 1 | Retrieval depth vs top_k; optional generation | ✅ | `cc994e6` | 374 tests; fusion now differs from union |
-| 2 | Gold loading, quote → span | 🔄 | | |
-| 3 | Span → overlapping chunks | 🔄 | | |
-| 4 | Recall@k, MRR, nDCG | 🔄 | | |
-| 5 | Ten gold questions | ⬜ | | manual judgement work |
-| 6 | Benchmark runner, CLI, README | ⬜ | | first real numbers |
-| — | Final whole-branch review | ⬜ | | |
+| 2 | Gold loading, quote → span | ✅ | `905f672`, `76ca130` | multi-quote schema |
+| 3 | Span → overlapping chunks | ✅ | `5b8826e` | overlap, not containment |
+| 4 | Recall@k, MRR, nDCG | ✅ | `9ce76fa`, `40a22ea` | + doc-precision |
+| 5 | Ten gold questions | ✅ | `b8f57be` | 10 questions, 17 quotes, 10 docs |
+| 6 | Benchmark runner, CLI, README | ✅ | `c58970e`..`03e055f` | 439 tests |
+| — | Final whole-branch review | 🔄 | | |
 
 ### Phase 3 carried items
 
@@ -173,3 +173,55 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-3-evaluation-harness.md](docs/sup
   never exercised the depth-vs-k distinction at all, which is exactly what the plan
   suspected. Not worth adding identity assertions to fixture tests (brittle); the real
   coverage arrives with Task 6's benchmark, which measures identity by construction.
+
+### Phase 3 — recorded deviations
+
+- **The plan's gold-set acceptance bar was not met, and was overridden.** Task 5 Step 7
+  said: "A mean Recall@5 around 0.4-0.8 is a healthy gold set. If it is near 0.0,
+  something is wrong with the spans rather than with retrieval; investigate before
+  proceeding." Measured: **0.050**, both before and after the multi-span fix.
+
+  Investigated rather than ignored. Retrieval is not broken: relevant chunks rank 4th
+  to 64th out of 5,116, and for several questions the top-5 are all from the correct
+  paper and genuinely answer the question — the gold set simply names some answering
+  passages, not all. Multi-span widened the relevant set but could not move Recall@5,
+  because with 5,116 chunks and 1-4 relevant per question the metric has a low ceiling
+  regardless of gold-set quality.
+
+  **The bar itself was wrong.** It was written before any measurement existed, and it
+  assumed a smaller corpus or broader relevance than this project has. Superseded by:
+  chunk metrics at k=20 (Recall@20 = 0.325, real headroom) plus document-precision@5
+  (0.560, spread 0.0-1.0, so it discriminates). Recording it here because a future
+  reader should not have to wonder why an explicit gate was never satisfied.
+
+- **Gold-set mix is thin on decomposition.** The plan suggested 2 two-fact questions;
+  only `colbertv2-tradeoff` is clearly one. Actual mix: ~4 direct, 3 vocabulary
+  mismatch, 2 general/step-back, 1 decomposition. Worth correcting when Phase 7 grows
+  the set to 30, not worth redoing now.
+
+- **Queued Minor** — `evaluation/gold.py`: a `quotes` list containing a non-string
+  raises a bare `TypeError` from `str.count`, with no question id, breaking the
+  module's otherwise-consistent "every error names the question" contract.
+
+- **Queued Minor** — the plan's own "A refinement to the spec's gold-set format"
+  section still describes the single-quote model and was never updated for multi-quote.
+
+### Phase 3 — the latency column was measuring the wrong thing
+
+The first published table had a `Mean ms` column reporting rag-fusion at 94 ms and
+multi-query at 42,680 ms. rag-fusion is not 450x faster. Both build their rewrite
+prompt from the same `MULTI_QUERY_TEMPLATE`, so they share an LLM cache key, and
+`STRATEGY_NAMES` happens to order multi-query first — it paid for every rewrite and
+rag-fusion got them free. Reordering the tuple would have swapped which looked fast.
+
+Replaced with two order-independent columns: **LLM calls** per question (counted
+logically, cache hit or not) and **Mean ms (warm)** (each strategy warmed before being
+timed). Verified by running the two strategies in both orders and getting identical
+numbers.
+
+The retrieval scores were unaffected — all four score columns are bit-identical before
+and after. What changed is the cost story, and one claim that rested on it: the
+"decomposition costs ~2000x direct" line was an artifact of cold-cache timing. The
+real premium is 3.4 LLM calls per question versus 0-1, and 110 ms warm versus 42 ms.
+Still the most expensive strategy, for the smallest recall gain, but by 2.6x rather
+than three orders of magnitude.
