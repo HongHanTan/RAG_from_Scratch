@@ -1,0 +1,728 @@
+*[inlinelist,1]label=),itemjoin=, ,itemjoin*=, and
+
+SPLADE: Sparse Lexical and Expansion Model
+
+for First Stage Ranking
+
+Thibault Formal
+
+Affiliation: Naver Labs Europe
+, Meylan
+, France
+
+Affiliation: Sorbonne Université, LIP6
+, Paris
+, France
+
+email: thibault.formal@naverlabs.com
+
+,
+Benjamin Piwowarski
+
+Affiliation: Sorbonne Université, CNRS, LIP6
+, Paris
+, France
+
+email: benjamin.piwowarski@lip6.fr
+
+and
+Stéphane Clinchant
+
+Affiliation: Naver Labs Europe
+, Meylan
+, France
+
+email: stephane.clinchant@naverlabs.com
+
+Abstract.
+
+In neural Information Retrieval, ongoing research is directed towards improving the first retriever in ranking pipelines. Learning dense embeddings to conduct retrieval using efficient approximate nearest neighbors methods has proven to work well. Meanwhile, there has been a growing interest in learning sparse representations for documents and queries, that could inherit from the desirable properties of bag-of-words models such as the exact matching of terms and the efficiency of inverted indexes. In this work, we present a new first-stage ranker based on explicit sparsity regularization and a log-saturation effect on term weights, leading to highly sparse representations and competitive results with respect to state-of-the-art dense and sparse methods. Our approach is simple, trained end-to-end in a single stage. We also explore the trade-off between effectiveness and efficiency, by controlling the contribution of the sparsity regularization.
+
+Keywords:
+
+neural networks, indexing, sparse representations, regularization
+
+1. Introduction
+
+The release of large pre-trained language models like BERT (Devlin
+et al. 2018) has shaken-up Natural Language Processing and Information Retrieval.
+These models have shown a strong ability to adapt to various tasks by simple fine-tuning. At the beginning of 2019, Nogueira and Cho (Nogueira and Cho 2019) achieved state-of-the-art results – by a large margin – on the MS MARCO passage re-ranking task, paving the way for LM-based neural ranking models. Because of strict efficiency requirements, these models have initially been used as re-rankers in a two-stage ranking pipeline, where first-stage retrieval – or candidate generation – is conducted with bag-of-words models (e.g. BM25) that rely on inverted indexes. While BOW models remain strong baselines (Yang
+et al. 2019), they suffer from the long standing vocabulary mismatch problem, where relevant documents might not contain terms that appear in the query. Thus, there have been attempts to substitute standard BOW approaches by learned (neural) rankers. Designing such models poses several challenges regarding efficiency and scalability: therefore there is a need for methods where most of the computation can be done offline and online inference is fast.
+Dense retrieval with approximate nearest neighbors search has shown impressive results (Xiong et al. 2021; Lin et al. 2020; Ding et al. 2020), but is still combined with BOW models because of its inability to explicitly model term matching. Hence, there has recently been a growing interest in learning sparse representations for queries and documents (Zamani et al. 2018; Dai and Callan 2019; Nogueira
+et al. 2019; Zhao et al. 2020; Bai et al. 2020). By doing so, models can inherit from the desirable properties of BOW models like exact-match of (possibly latent) terms, efficiency of inverted indexes and interpretability. Additionally, by modeling implicit or explicit (latent, contextualized) expansion mechanisms – similarly to standard expansion models in IR – these models can reduce the vocabulary mismatch.
+
+The contributions of this paper are threefold:
+
+(1) we build upon SparTerm (Bai et al. 2020), and show that a mild tuning of hyperparameters brings improvements that largely outperform the results reported in the original paper;
+
+(2) we propose the SParse Lexical AnD Expansion (SPLADE) model, based on a logarithmic activation and sparse regularization. SPLADE performs an efficient document expansion (Bai et al. 2020; MacAvaney et al. 2020), with competitive results with respect to complex training pipelines for dense models like ANCE (Xiong et al. 2021);
+
+(3) finally, we show how the sparsity regularization can be controlled to influence the trade-off between efficiency (in terms of the number of floating-point operations) and effectiveness.
+
+2. Related Works
+
+Dense retrieval based on BERT Siamese models (Reimers and
+Gurevych 2019) has become the standard approach for candidate generation in Question Answering and IR (Guu
+et al. 2020; Karpukhin et al. 2020; Xiong et al. 2020; Lin et al. 2020; Ding et al. 2020). While the backbone of these models remains the same, recent works highlight the critical aspects of the training strategy to obtain state-of-the-art results, ranging from improved negative sampling (Xiong et al. 2020; Ding et al. 2020) to distillation (Hofstätter et al. 2020; Lin et al. 2020). ColBERT (Khattab and
+Zaharia 2020) pushes things further: the postponed token-level interactions allow to efficiently apply the model for first-stage retrieval, benefiting of the effectiveness of modeling fine-grained interactions, at the cost of storing embeddings for each (sub)term – raising concerns about the actual scalability of the approach for large collections.
+To the best of our knowledge, very few studies have discussed the impact of using approximate nearest neighbors (ANN) search on IR metrics (Boytsov 2018; Tu
+et al. 2020).
+Due to the moderate size of the MS MARCO collection, results are usually reported with an exact, brute-force search, therefore giving no indication on the effective computing cost.
+
+An alternative to dense indexes is term-based ones.
+Building on standard BOW models, Zamani et al. first introduced SNRM (Zamani et al. 2018): the model embeds documents and queries in a sparse high-dimensional latent space by means of regularization on representations.
+However, SNRM effectiveness remains limited and its efficiency has been questioned (Paria et al. 2020).
+More recently, there have been attempts to transfer the knowledge from pre-trained LM to sparse approaches.
+Based on BERT, DeepCT (Dai and Callan 2019; Dai and Callan 2020a; Dai and Callan 2020b) focused on learning contextualized term weights in the full vocabulary space – akin to BOW term weights. However, as the vocabulary associated with a document remains the same, this type of approach does not solve the vocabulary mismatch, as acknowledged by the use of query expansion for retrieval (Dai and Callan 2019).
+A first solution to this problem consists in expanding documents using generative approaches such as doc2query (Nogueira
+et al. 2019) and docTTTTTquery (Nogueira and Lin 2019) to predict expansion words for documents. The document expansion adds new terms to documents – hence fighting the vocabulary mismatch – as well as repeats existing terms, implicitly performing re-weighting by boosting important terms. These methods are however limited by the way they are trained (predicting queries), which is indirect in nature and limit their progress.
+A second solution to this problem, that has been chosen by recent works such as (Bai et al. 2020; MacAvaney et al. 2020; Zhao et al. 2020), is to estimate the importance of each term of the vocabulary implied by each term of the document, i.e. to compute an interaction matrix between the document or query tokens and all the tokens from the vocabulary. This is followed by an aggregation mechanism (roughly sum for SparTerm (Bai et al. 2020), max for EPIC (MacAvaney et al. 2020) and SPARTA (Zhao et al. 2020)), that allows to compute an importance weight for each term of the vocabulary, for the full document or query.
+However, EPIC and SPARTA (document) representations are not sparse enough by construction – unless resorting on top- pooling – contrary to SparTerm, for which fast retrieval is thus possible. Furthermore, the latter does not include (like SNRM) an explicit sparsity regularization, which hinders its performance. Our SPLADE model relies on such regularization, as well as other key changes, that boost both the efficiency and the effectiveness of this type of models.
+
+3. Sparse Lexical representations for first-stage ranking
+
+In this section, we first describe in details the SparTerm model (Bai et al. 2020), before presenting our model named SPLADE.
+
+3.1. SparTerm
+
+SparTerm predicts term importance – in BERT WordPiece vocabulary () – based on the logits of the Masked Language Model (MLM) layer. More precisely, let us consider an input query or document sequence (after WordPiece tokenization) , and its corresponding BERT embeddings . We consider the importance of the token (vocabulary) for a token (of the input sequence):
+
+(1)
+
+where denotes the BERT input embedding for token , is a token-level bias, and transform is a linear layer with GeLU activation and LayerNorm. Note that Eq. 1 is equivalent to the MLM prediction, thus it can be also be initialized from a pre-trained MLM model. The final representation is then obtained by summing importance predictors over the input sequence tokens, after applying ReLU to ensure the positivity of term weights:
+
+(2)
+
+where is a binary mask (gating) described latter.
+The above equation can be seen as a form of query/document expansion, as observed in (Bai et al. 2020; MacAvaney et al. 2020), since for each token of the vocabulary the model predicts a new weight .
+SparTerm (Bai et al. 2020) introduces two sparsification schemes that turn off a large amount of dimensions in query and document representations, allowing to efficiently retrieve from an inverted index:
+
+lexical-only is a BOW masking, i.e. if token appears in , and 0 otherwise;
+
+expansion-aware is a lexical/expansion-aware binary gating mechanism, where is learned. To preserve the original input, it is forced to 1 if the token appears in .
+
+Let denote the ranking score obtained via dot product between and representations from Eq. (2). Given a query , a positive document and a negative document , SparTerm is trained by minimzing the following loss:
+
+(3)
+
+Limitations
+
+SparTerm expansion-aware gating is somewhat intricate, and the model cannot be trained end-to-end: the gating mechanism is learned beforehand, and fixed while fine-tuning the matching model with , therefore preventing the model to learn the optimal sparsification strategy for the ranking task. Moreover, the two lexical and expansion-aware strategies do perform almost equally well, questioning the actual benefits of expansion.
+
+3.2. SPLADE: SParse Lexical AnD Expansion model
+
+In the following, we propose slight, but essential changes to the SparTerm model that dramatically improve its performance.
+
+Model
+
+We introduce a minor change in the importance estimation from Eq. 2, by introducing a log-saturation effect which
+prevents some terms to dominate and
+naturally ensures sparsity in representations:
+
+(4)
+
+While it is intuitive that using a log-saturation prevents some terms from dominating – drawing a parallel with axiomatic approaches in IR and (tf) models (Fang
+et al. 2004) – the implied sparsity can seem surprising at first, but,
+according to our experiments, it obtains better experimental results and allows already to obtain sparse solutions without any regularization.
+
+Ranking loss
+
+Given a query in a batch, a positive document , a (hard) negative document (e.g. coming from BM25 sampling), and a set of negative documents in the batch (positive documents from other queries) , we consider the ranking loss from (Ding et al. 2020), which can be interpreted as the maximization of the probability of the document being relevant among the documents and :
+
+(5)
+
+The in-batch negatives (IBN) sampling strategy is widely used for training image retrieval models, and has shown to be effective in learning first-stage rankers (Karpukhin et al. 2020; Ding et al. 2020; Lin et al. 2020).
+
+Learning sparse representations
+
+The idea of learning sparse representations for first-stage retrieval dates back to SNRM (Zamani et al. 2018), via regularization. Later, (Paria et al. 2020) pointed-out that minimizing the norm of representations does not result in the most efficient index, as nothing ensures that posting lists are evenly distributed. Note that this is even more true for standard indexes due to the Zipfian nature of the term frequency distribution.
+To obtain a well-balanced index, Paria et al. (Paria et al. 2020) introduce the FLOPS regularizer, a smooth relaxation of the average number of floating-point operations necessary to compute the score of a document, and hence directly related to the retrieval time. It is defined using as a continuous relaxation of the activation (i.e. the term has a non zero weight) probability for token , and estimated for documents in a batch of size by
+.
+This gives the following regularization loss
+
+This differs from the regularization used in SNRM (Zamani et al. 2018) where the are not squared: using thus pushes down high average term weight values, giving rise to a more balanced index.
+
+Overall loss
+
+We propose to combine the best of both worlds for end-to-end training of sparse, expansion-aware representations of documents and queries. Thus, we discard the binary gating in SparTerm, and instead learn our log-saturated model (Eq. 4) by jointly optimizing ranking and regularization losses:
+
+(6)
+
+where is a sparse regularization ( or ). We use two distinct regularization weights ( and ) for queries and documents – allowing to put more pressure on the sparsity for queries, which is critical for fast retrieval.
+
+4. Experimental setting and results
+
+We trained and evaluated our models on the MS MARCO passage ranking dataset11
+1
+
+https://github.com/microsoft/MSMARCO-Passage-Ranking in the full ranking setting. The dataset contains approximately M passages, and hundreds of thousands training queries with shallow annotation ( relevant passages per query in average). The development set contains queries with similar labels, while the TREC DL 2019 evaluation set provides fine-grained annotations from human assessors for a set of queries (Craswell et al. 2020).
+
+Training, indexing and retrieval
+
+We initialized the models with the BERT-base checkpoint. Models are trained with the ADAM optimizer, using a learning rate of with linear scheduling and a warmup of steps, and a batch size of . We keep the best checkpoint using MRR@10 on a validation set of queries, after training for k iterations (note that this is not optimal, as we validate on a re-ranking task). We consider a maximum length of for input sequences. In order to mitigate the contribution of the regularizer at the early stages of training, we follow (Paria et al. 2020) and use a scheduler for , quadratically increasing at each training iteration, until a given step (k in our case), from which it remains constant. Typical values for fall between and .
+For storing the index,
+we use a custom implementation based on Python arrays, and we rely on Numba (Lam
+et al. 2015) to parallelize retrieval. Models22
+2
+
+We made the code public at https://github.com/naver/splade are trained using PyTorch (Paszke
+et al. 2019) and HuggingFace transformers (Wolf et al. 2020), on Tesla GPUs with GB memory.
+
+Evaluation
+
+We report Recall@1000 for both datasets, as well as the official metrics MRR@10 and NDCG@10 for MS MARCO dev set and TREC DL 2019 respectively. Since we are essentially interested in the first retrieval step, we do not consider re-rankers based on BERT, and we compare our approach to first stage rankers only – results reported on the MS MARCO leaderboard are thus not comparable to the results presented here. We compare to the following sparse approaches
+
+(1) BM25
+
+(2) DeepCT (Dai and Callan 2019)
+
+(3) doc2query-T5 (Nogueira and Lin 2019)
+
+(4) and SparTerm (Bai et al. 2020)
+
+, as well as state-of-the-art dense approaches ANCE (Xiong et al. 2020) and TCT-ColBERT (Lin et al. 2020). We report the results from the original papers. We include a pure lexical SparTerm trained with our ranking pipeline (ST lexical-only). To illustrate the benefits of the log-saturation, we add results for models trained using Eq. (2) instead of Eq. (4) (ST exp- and ST exp-).
+For sparse models, we indicate an estimation of the average number of floating-point operations between a query and a document in Table 1, when available, which is defined as
+the expectation
+where is the activation probability for token in a document or a query . It is empirically estimated from a set of approximately k development queries, on the MS MARCO collection.
+
+Results are given in Table 1.
+Overall, we observe that:
+
+(1) our models outperform the other sparse retrieval methods by a large margin (except for recall@1000 on TREC DL);
+(2) the results are competitive with state-of-the-art dense retrieval methods.
+
+More specifically, our training method for ST lexical-only already outperforms the results of DeepCT as well as the results reported in the original SparTerm paper – including the model using expansion. Thanks to the additional sparse expansion mechanism, we are able to obtain results on par with state-of-the-art dense approaches on MS MARCO dev set (e.g. Recall@1000 close to for ST exp-), but with a much bigger average number of FLOPS.
+
+By adding a log-saturation effect to the expansion model, SPLADE greatly increases sparsity – reducing the FLOPS to similar levels than BOW approaches – at no cost on performance when compared to the best first-stage rankers. In addition, we observe the advantage of the FLOPS regularization over in order to decrease the computing cost. Note that in contrast to SparTerm, SPLADE is trained end-to end in a single step. It is also remarkably simple, compared to dense state-of-the-art baselines such as ANCE (Xiong et al. 2020), and avoids resorting to approximate neighbors search, whose impact on IR metrics has not been fully evaluated yet.
+
+Table 1. Evaluation on MS MARCO passage retrieval (dev set) and TREC DL 2019
+
+model
+MS MARCO dev
+TREC DL 2019
+FLOPS
+
+MRR@10
+R@1000
+NDCG@10
+R@1000
+
+Dense retrieval
+
+Siamese (ours)
+0.312
+0.941
+0.637
+0.711
+-
+
+ANCE (Xiong et al. 2020)
+0.330
+0.959
+0.648
+-
+-
+
+TCT-ColBERT (Lin et al. 2020)
+0.335
+0.964
+0.670
+0.720
+-
+
+Sparse retrieval
+
+BM25
+0.184
+0.853
+0.506
+0.745
+0.13
+
+DeepCT (Dai and Callan 2019)
+0.243
+0.913
+0.551
+0.756
+-
+
+doc2query-T5 (Nogueira and Lin 2019)
+0.277
+0.947
+0.642
+0.827
+0.81
+
+ST lexical-only (Bai et al. 2020)
+0.275
+0.912
+-
+-
+-
+
+ST expansion (Bai et al. 2020)
+0.279
+0.925
+-
+-
+-
+
+Our methods
+
+ST lexical-only
+0.290
+0.923
+0.595
+0.774
+1.84
+
+ST exp-
+0.314
+0.959
+0.668
+0.800
+4.62
+
+ST exp-
+0.312
+0.954
+0.671
+0.813
+2.83
+
+SPLADE-
+0.322
+0.954
+0.667
+0.792
+0.88
+
+SPLADE-
+0.322
+0.955
+0.665
+0.813
+0.73
+
+Figure 1. Performance vs FLOPS for SPLADE models trained with different regularization strength on MS MARCO
+
+Effectiveness-efficiency trade-off
+
+Figure 1 illustrates the trade-off between effectiveness (MRR@10) and efficiency (FLOPS), when we vary and (varying both implies that plots are not smooth). We observe that ST exp- falls far behind BOW models and SPLADE in terms of efficiency. In the meantime, SPLADE reaches efficiency levels equivalent to sparse BOW models, while outperforming doc2query-T5.
+Interestingly, strongly regularized models still show competitive performance (e.g. FLOPS= MRR@10=). Finally, the regularization effect brought by compared to is clear: for the same level of efficiency, performance of the latter is always lower.
+
+The role of expansion
+
+Experiments show that the expansion brings improvements w.r.t. to the purely lexical approach by increasing recall. Additionally, representations obtained from expansion-regularized models are sparser: the models learn how to balance expansion and compression, by both turning-off irrelevant dimensions and activating useful ones. On a set of k documents, the SPLADE- from Table 1 drops in average terms per document, while adding expansion terms. For one of our most efficient model (FLOPS=), terms are dropped in average, for only new expansion terms. In this case, representations are extremely sparse: documents and queries contain in average and non-zero values respectively, and we need less that GB to store the index on disk.
+Table 2 shows an example where the model performs term re-weighting by emphasizing on important terms and discarding most of the terms without information content. Expansion allows to enrich documents, either by implicitly adding stemming effects (legs leg) or by adding relevant topic words (e.g. treatment).
+
+Table 2. Document and expansion terms: between parenthesis is the weight associated with the term – omitted for the second occurrence of the term in the document, and strike-through for zeros
+
+original document (doc ID: 7131647)
+
+if (1.2) bow (2.56) legs (1.18) is caused (1.29) by (0.47) the bone (1.2) alignment (1.88) issue (0.87) than you may be able (0.29) to correct (1.37) through (0.43) bow legs correction (1.05) exercises. read more here.. if bow legs is caused by the bone alignment issue than you may be able to correct through bow legs correction exercises.
+
+expansion terms
+
+(leg, 1.62) (arrow, 0.7) (exercise, 0.64) (bones, 0.63) (problem, 0.41) (treatment, 0.35) (happen, 0.29) (create, 0.22) (can, 0.14) (worse, 0.14) (effect, 0.08) (teeth, 0.06) (remove, 0.03)
+
+5. Conclusion
+
+Recently, dense retrieval based on BERT has demonstrated its superiority for first-stage retrieval, questioning the competitiveness of traditional sparse models. In this work, we have proposed SPLADE, a sparse model revisiting query/document expansion. Our approach relies on in-batch negatives, logarithmic activation and FLOPS regularization to learn effective and efficient sparse representations. SPLADE is an appealing candidate for initial retrieval: it rivals the latest state-of-the-art dense retrieval models, its training procedure is straightforward, its sparsity/FLOPS can be controlled explicitly through the regularization, and it can operate on inverted indexes. In reason of its simplicity, SPLADE is a solid basis for further improvements in this line of research.
+
+References
+
+(1)
+
+Bai et al. (2020)
+
+Yang Bai, Xiaoguang Li,
+Gang Wang, Chaoliang Zhang,
+Lifeng Shang, Jun Xu,
+Zhaowei Wang, Fangshan Wang, and
+Qun Liu. 2020.
+
+SparTerm: Learning Term-based Sparse Representation
+for Fast Text Retrieval.
+
+arXiv:2010.00768 [cs.IR]
+
+Boytsov (2018)
+
+Leonid Boytsov.
+2018.
+
+Efficient and Accurate Non-Metric k-NN Search
+with Applications to Text Matching.
+
+Ph.D. Dissertation. Carnegie
+Mellon University.
+
+Craswell et al. (2020)
+
+Nick Craswell, Bhaskar
+Mitra, Emine Yilmaz, Daniel Campos,
+and Ellen M Voorhees. 2020.
+
+Overview of the trec 2019 deep learning track.
+
+arXiv preprint arXiv:2003.07820
+(2020).
+
+Dai and Callan (2019)
+
+Zhuyun Dai and Jamie
+Callan. 2019.
+
+Context-Aware Sentence/Passage Term Importance
+Estimation For First Stage Retrieval.
+
+arXiv:1910.10687 [cs.IR]
+
+Dai and Callan (2020a)
+
+Zhuyun Dai and Jamie
+Callan. 2020a.
+
+Context-Aware Document Term Weighting for
+Ad-Hoc Search.
+
+Association for Computing Machinery,
+New York, NY, USA, 1897–1907.
+
+https://doi.org/10.1145/3366423.3380258
+
+Dai and Callan (2020b)
+
+Zhuyun Dai and Jamie
+Callan. 2020b.
+
+Context-Aware Term Weighting For First
+Stage Passage Retrieval.
+
+Association for Computing Machinery,
+New York, NY, USA, 1533–1536.
+
+https://doi.org/10.1145/3397271.3401204
+
+Devlin
+et al. (2018)
+
+Jacob Devlin, Ming-Wei
+Chang, Kenton Lee, and Kristina
+Toutanova. 2018.
+
+BERT: Pre-training of Deep Bidirectional
+Transformers for Language Understanding.
+
+CoRR abs/1810.04805
+(2018).
+
+arXiv:1810.04805
+
+http://arxiv.org/abs/1810.04805
+
+Ding et al. (2020)
+
+Yingqi Qu Yuchen Ding,
+Jing Liu, Kai Liu,
+Ruiyang Ren, Xin Zhao,
+Daxiang Dong, Hua Wu, and
+Haifeng Wang. 2020.
+
+RocketQA: An Optimized Training Approach to Dense
+Passage Retrieval for Open-Domain Question Answering.
+
+arXiv:2010.08191 [cs.CL]
+
+Fang
+et al. (2004)
+
+Hui Fang, Tao Tao, and
+ChengXiang Zhai. 2004.
+
+A Formal Study of Information Retrieval
+Heuristics. In Proceedings of the 27th Annual
+International ACM SIGIR Conference on Research and Development in Information
+Retrieval (Sheffield, United Kingdom) (SIGIR ’04).
+Association for Computing Machinery,
+New York, NY, USA, 49–56.
+
+https://doi.org/10.1145/1008992.1009004
+
+Guu
+et al. (2020)
+
+Kelvin Guu, Kenton Lee,
+Zora Tung, Panupong Pasupat, and
+Ming-Wei Chang. 2020.
+
+REALM: Retrieval-Augmented Language Model
+Pre-Training.
+
+arXiv:2002.08909 [cs.CL]
+
+Hofstätter et al. (2020)
+
+Sebastian Hofstätter,
+Sophia Althammer, Michael Schröder,
+Mete Sertkan, and Allan Hanbury.
+2020.
+
+Improving Efficient Neural Ranking Models with
+Cross-Architecture Knowledge Distillation.
+
+arXiv:2010.02666 [cs.IR]
+
+Karpukhin et al. (2020)
+
+Vladimir Karpukhin, Barlas
+Oğuz, Sewon Min, Patrick Lewis,
+Ledell Wu, Sergey Edunov,
+Danqi Chen, and Wen tau Yih.
+2020.
+
+Dense Passage Retrieval for Open-Domain Question
+Answering.
+
+arXiv:2004.04906 [cs.CL]
+
+Khattab and
+Zaharia (2020)
+
+Omar Khattab and Matei
+Zaharia. 2020.
+
+ColBERT: Efficient and Effective Passage Search via
+Contextualized Late Interaction over BERT. In
+Proceedings of the 43rd International ACM SIGIR
+Conference on Research and Development in Information Retrieval (Virtual
+Event, China) (SIGIR ’20).
+Association for Computing Machinery,
+New York, NY, USA, 39–48.
+
+https://doi.org/10.1145/3397271.3401075
+
+Lam
+et al. (2015)
+
+Siu Kwan Lam, Antoine
+Pitrou, and Stanley Seibert.
+2015.
+
+Numba: A llvm-based python jit compiler. In
+Proceedings of the Second Workshop on the LLVM
+Compiler Infrastructure in HPC. 1–6.
+
+Lin et al. (2020)
+
+Sheng-Chieh Lin,
+Jheng-Hong Yang, and Jimmy Lin.
+2020.
+
+Distilling Dense Representations for Ranking using
+Tightly-Coupled Teachers.
+
+arXiv:2010.11386 [cs.IR]
+
+MacAvaney et al. (2020)
+
+Sean MacAvaney,
+Franco Maria Nardini, Raffaele Perego,
+Nicola Tonellotto, Nazli Goharian, and
+Ophir Frieder. 2020.
+
+Expansion via Prediction of Importance with
+Contextualization.
+
+Proceedings of the 43rd International ACM
+SIGIR Conference on Research and Development in Information Retrieval
+(Jul 2020).
+
+https://doi.org/10.1145/3397271.3401262
+
+Nogueira and Cho (2019)
+
+Rodrigo Nogueira and
+Kyunghyun Cho. 2019.
+
+Passage Re-ranking with BERT.
+
+arXiv:1901.04085 [cs.IR]
+
+Nogueira and Lin (2019)
+
+Rodrigo Nogueira and
+Jimmy Lin. 2019.
+
+From doc2query to docTTTTTquery.
+
+Nogueira
+et al. (2019)
+
+Rodrigo Nogueira, Wei
+Yang, Jimmy Lin, and Kyunghyun Cho.
+2019.
+
+Document Expansion by Query Prediction.
+
+arXiv:1904.08375 [cs.IR]
+
+Paria et al. (2020)
+
+Biswajit Paria, Chih-Kuan
+Yeh, Ian E. H. Yen, Ning Xu,
+Pradeep Ravikumar, and Barnabás
+Póczos. 2020.
+
+Minimizing FLOPs to Learn Efficient Sparse
+Representations.
+
+arXiv:2004.05665 [cs.LG]
+
+Paszke
+et al. (2019)
+
+Adam Paszke, Sam Gross,
+Francisco Massa, Adam Lerer,
+James Bradbury, Gregory Chanan,
+Trevor Killeen, Zeming Lin,
+Natalia Gimelshein, Luca Antiga,
+et al. 2019.
+
+PyTorch: An Imperative Style, High-Performance Deep
+Learning Library.. In NeurIPS.
+
+Reimers and
+Gurevych (2019)
+
+Nils Reimers and Iryna
+Gurevych. 2019.
+
+Sentence-BERT: Sentence Embeddings using Siamese
+BERT-Networks. In Proceedings of the 2019
+Conference on Empirical Methods in Natural Language Processing.
+Association for Computational Linguistics.
+
+http://arxiv.org/abs/1908.10084
+
+Tu
+et al. (2020)
+
+Zhengkai Tu, Wei Yang,
+Zihang Fu, Yuqing Xie,
+Luchen Tan, Kun Xiong,
+Ming Li, and Jimmy Lin.
+2020.
+
+Approximate Nearest Neighbor Search and Lightweight
+Dense Vector Reranking in Multi-Stage Retrieval Architectures. In
+Proceedings of the 2020 ACM SIGIR on International
+Conference on Theory of Information Retrieval. 97–100.
+
+Wolf et al. (2020)
+
+Thomas Wolf, Lysandre
+Debut, Victor Sanh, Julien Chaumond,
+Clement Delangue, Anthony Moi,
+Pierric Cistac, Tim Rault,
+Rémi Louf, Morgan Funtowicz,
+Joe Davison, Sam Shleifer,
+Patrick von Platen, Clara Ma,
+Yacine Jernite, Julien Plu,
+Canwen Xu, Teven Le Scao,
+Sylvain Gugger, Mariama Drame,
+Quentin Lhoest, and Alexander M. Rush.
+2020.
+
+HuggingFace’s Transformers: State-of-the-art Natural
+Language Processing.
+
+arXiv:1910.03771 [cs.CL]
+
+Xiong et al. (2020)
+
+Lee Xiong, Chenyan Xiong,
+Ye Li, Kwok-Fung Tang,
+Jialin Liu, Paul Bennett,
+Junaid Ahmed, and Arnold Overwijk.
+2020.
+
+Approximate Nearest Neighbor Negative Contrastive
+Learning for Dense Text Retrieval.
+
+arXiv:2007.00808 [cs.IR]
+
+Xiong et al. (2021)
+
+Lee Xiong, Chenyan Xiong,
+Ye Li, Kwok-Fung Tang,
+Jialin Liu, Paul N. Bennett,
+Junaid Ahmed, and Arnold Overwikj.
+2021.
+
+Approximate Nearest Neighbor Negative Contrastive
+Learning for Dense Text Retrieval. In
+International Conference on Learning
+Representations.
+
+https://openreview.net/forum?id=zeFrfgyZln
+
+Yang
+et al. (2019)
+
+Wei Yang, Kuang Lu,
+Peilin Yang, and Jimmy Lin.
+2019.
+
+Critically Examining the “Neural Hype”.
+
+Proceedings of the 42nd International ACM
+SIGIR Conference on Research and Development in Information Retrieval
+(Jul 2019).
+
+https://doi.org/10.1145/3331184.3331340
+
+Zamani et al. (2018)
+
+Hamed Zamani, Mostafa
+Dehghani, W. Bruce Croft, Erik
+Learned-Miller, and Jaap Kamps.
+2018.
+
+From Neural Re-Ranking to Neural Ranking: Learning
+a Sparse Representation for Inverted Indexing. In
+Proceedings of the 27th ACM International
+Conference on Information and Knowledge Management (Torino, Italy)
+(CIKM ’18). Association for
+Computing Machinery, New York, NY, USA,
+497–506.
+
+https://doi.org/10.1145/3269206.3271800
+
+Zhao et al. (2020)
+
+Tiancheng Zhao, Xiaopeng
+Lu, and Kyusong Lee. 2020.
+
+SPARTA: Efficient Open-Domain Question Answering via
+Sparse Transformer Matching Retrieval.
+
+arXiv:2009.13013 [cs.CL]
+
+◄
+
+Feeling
+lucky?
+
+Conversion
+report
+Report
+an issue
+View original
+on arXiv►
+
+Copyright
+Privacy Policy
+
+Generated by LaTeXML oxide
