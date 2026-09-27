@@ -202,18 +202,52 @@ wearing a lab coat.
 Phase 3 measures retrieval — not answer quality — against a 10-question gold
 set (`evaluation/gold.json`), using `python -m evaluation.benchmark`:
 
-| Strategy | Recall@20 | MRR | nDCG@20 | DocPrec@5 | Mean ms | Questions |
-|---|---:|---:|---:|---:|---:|---:|
-| hyde | 0.558 | 0.358 | 0.315 | 0.660 | 32277 | 10 |
-| step-back | 0.475 | 0.196 | 0.225 | 0.460 | 5346 | 10 |
-| rag-fusion | 0.392 | 0.140 | 0.184 | 0.560 | 94 | 10 |
-| multi-query | 0.375 | 0.190 | 0.208 | 0.400 | 42680 | 10 |
-| decomposition | 0.333 | 0.194 | 0.187 | 0.600 | 105976 | 10 |
-| direct | 0.325 | 0.103 | 0.137 | 0.560 | 53 | 10 |
+| Strategy | Recall@20 | MRR | nDCG@20 | DocPrec@5 | LLM calls | Mean ms (warm) | Questions |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| hyde | 0.558 | 0.358 | 0.315 | 0.660 | 1.0 | 196 | 10 |
+| step-back | 0.475 | 0.196 | 0.225 | 0.460 | 1.0 | 61 | 10 |
+| rag-fusion | 0.392 | 0.140 | 0.184 | 0.560 | 1.0 | 95 | 10 |
+| multi-query | 0.375 | 0.190 | 0.208 | 0.400 | 1.0 | 95 | 10 |
+| decomposition | 0.333 | 0.194 | 0.187 | 0.600 | 3.4 | 110 | 10 |
+| direct | 0.325 | 0.103 | 0.137 | 0.560 | 0.0 | 42 | 10 |
 
-Ran twice; every metric column was bit-identical between runs (`Mean ms` is
-wall-clock and drops once the LLM cache is warm, which is expected and not a
-determinism concern).
+Ran repeatedly (the full sweep, plus `multi-query` and `rag-fusion` run alone
+in both orders — see below); every metric column, `LLM calls` included, was
+bit-identical across runs. `Mean ms (warm)` moves a little run to run, as
+wall-clock numbers do, but no longer with strategy order.
+
+**Why the table no longer reports raw `Mean ms`:** an earlier version of this
+table reported wall-clock time directly, and it was wrong in a way a
+sceptical reader would find immediately — it showed `rag-fusion` at 94ms and
+`multi-query` at 42680ms, a 450x gap. Both strategies build their rewrite
+prompt from the same `MULTI_QUERY_TEMPLATE`, the same question and the same
+`n`, so they produce an identical prompt and therefore an identical entry in
+the on-disk LLM cache. `rag.strategies.STRATEGY_NAMES` lists `multi-query`
+before `rag-fusion`, so multi-query was the one paying for every cache miss
+and rag-fusion collected the free hits. Reordering that tuple would have
+swapped which strategy "looked" 450x faster — the number measured cache
+ordering, not the strategy.
+
+It is replaced with two columns that cannot be perturbed by cache state or
+strategy order:
+
+- **`LLM calls`** — the mean number of `.generate()` calls a strategy makes
+  per question, counted logically whether or not the cache served it (via a
+  small counting wrapper in `evaluation/benchmark.py`, kept separate from
+  `rag.llm.GeminiLLM.call_count`, which deliberately counts only real API
+  attempts). This is the real cost driver: it is what you would still pay if
+  the cache were empty, and it does not change with run order.
+- **`Mean ms (warm)`** — mean `total_ms` measured with every strategy's own
+  cache already warm, by running the gold set twice per strategy and scoring
+  only the second pass. It measures retrieval and orchestration cost —
+  embedding, vector search, merging or fusing ranked lists — not the cost of
+  an actual LLM round trip, and it is *not* comparable to a cold call's
+  latency.
+
+Confirmed empirically: running `python -m evaluation.benchmark --strategy
+multi-query --strategy rag-fusion` and the same command with the two
+`--strategy` flags reversed produces identical `LLM calls` (1.0 for each,
+either order) — the property the old `Mean ms` column did not have.
 
 `Recall@20`, `MRR` and `nDCG@20` are measured at retrieval depth 20, not the
 answer prompt's `top_k=5` — at k=5 every strategy scores near zero (plain
@@ -231,13 +265,23 @@ RAG-Fusion and multi-query find more relevant chunks somewhere in the top 20
 than direct retrieval does (higher Recall@20), but multi-query's `DocPrec@5`
 (0.400) is *worse* than direct's (0.560): unioning five rewritten queries can
 crowd the top 5 with chunks from the wrong paper even while surfacing more
-correct chunks further down the list. Decomposition costs roughly 2000x
-direct's latency (106s vs 53ms per question) for a Recall@20 gain of 0.008
-over direct — not a result that would survive being spent in production.
-Step-back sits in between: better recall than direct, but a lower `DocPrec@5`
-too. On this corpus, with this gold set, query translation is not a uniform
-win — most of it is a wash or a regression once ranking and document
-precision are counted, not just "was the chunk somewhere in the top 20."
+correct chunks further down the list. Step-back sits in between: better
+recall than direct, but a lower `DocPrec@5` too. On this corpus, with this
+gold set, query translation is not a uniform win — most of it is a wash or a
+regression once ranking and document precision are counted, not just "was
+the chunk somewhere in the top 20."
+
+Decomposition's cost case now rests on `LLM calls`, not milliseconds: with
+the cache warm it costs 110ms per question, only ~2.6x direct's 42ms — a
+world away from the roughly 2000x this table previously reported, because
+that old figure was really measuring a cold LLM round trip, not orchestration
+cost. The number that still holds up is `LLM calls`: decomposition spends a
+mean of 3.4 model calls per question (one to split the question, plus one per
+sub-question it answers) against 1 for every other translation strategy and
+0 for direct, for a Recall@20 gain of only 0.008 over direct. That is a real,
+order-independent cost — several extra round trips to the model, each with
+its own latency and price in production even when nothing is cached — for a
+gain within the noise of a 10-question sample.
 
 **Read this table narrowly:**
 
