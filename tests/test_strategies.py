@@ -166,3 +166,43 @@ def test_multi_query_degrades_when_the_llm_returns_nothing_usable(tiny_corpus: C
     result = get_strategy("multi-query").run("q", ctx)
     assert result.retrieved
     assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
+
+
+def test_rag_fusion_scores_are_labelled_rrf(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
+    result = get_strategy("rag-fusion").run("q", ctx)
+    assert all(r.score_kind == "rrf" for r in result.retrieved)
+
+
+def test_rag_fusion_scores_differ_from_multi_query_scores(tiny_corpus: Config):
+    # Same rewrites, same corpus: if fusion returned cosine scores it would be
+    # multi-query wearing a different name.
+    fusion_ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
+    fusion = get_strategy("rag-fusion").run("q", fusion_ctx)
+    merge_ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
+    merged = get_strategy("multi-query").run("q", merge_ctx)
+    assert fusion.retrieved[0].score != merged.retrieved[0].score
+
+
+def test_rag_fusion_returns_at_most_top_k(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
+    assert len(get_strategy("rag-fusion").run("q", ctx).retrieved) <= tiny_corpus.top_k
+
+
+def test_rag_fusion_reranks_from_one(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
+    result = get_strategy("rag-fusion").run("q", ctx)
+    assert [r.rank for r in result.retrieved] == list(range(1, len(result.retrieved) + 1))
+
+
+def test_rag_fusion_degrades_when_the_llm_fails(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FailingLLM())
+    result = get_strategy("rag-fusion").run("q", ctx)
+    assert result.retrieved
+    assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
+
+
+def test_rag_fusion_degrades_when_there_is_no_llm(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=None)
+    result = get_strategy("rag-fusion").run("q", ctx)
+    assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
