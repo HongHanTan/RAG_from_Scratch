@@ -50,10 +50,33 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-2-query-translation.md](docs/supe
 | 1 | Trace depth, score labels, translation steps | ✅ | `ff3ab86` | 254 tests; review clean |
 | 2 | Reciprocal rank fusion + best-score merge | ✅ | `3d2347e` | 269 tests; RRF math hand-verified |
 | 3 | Strategy protocol, context, direct | ✅ | `28e5166` | 282 tests; no import cycle |
-| 4 | Multi-query | 🔄 | | |
-| 5 | RAG-Fusion | ⬜ | | |
+| 4 | Multi-query | ✅ | `4153a81` | 295 tests; beats direct on a real question |
+| 5 | RAG-Fusion | 🔄 | | |
 | 6 | Step-back | ⬜ | | |
 | 7 | HyDE | ⬜ | | |
 | 8 | Decomposition (recursive + independent) | ⬜ | | largest task |
 | 9 | CLI `--strategy`, rendering, README | ⬜ | | |
 | — | Final whole-branch review | ⬜ | | |
+
+### Phase 2 carried items
+
+- **Task 3, Minor** — `build_answer_prompt`'s docstring lost Phase 1's note explaining
+  that `str.format` only scans the template, so chunk text containing `{}` cannot
+  inject. Behaviour is unchanged; the comment is what stops someone reintroducing the
+  bug. Restore in a later batch.
+- **RESOLVED (was Task 3 ⚠️)** — verified all three multi-query degradation paths
+  (no LLM, `LLMError`, unusable reply) leave `queries=[question]` and zero translation
+  steps. No stale rewrites on a degraded trace.
+
+### First evidence a strategy helps
+
+Question: *"What problem does HyDE solve?"* against the real 5,116-chunk index.
+
+- `direct` retrieved 4 `hyde` chunks and still answered: *"there is no mention of the
+  specific problem that HyDE is designed to solve."*
+- `multi-query` generated 5 rewrites (including *"zero shot dense retrieval failure
+  modes"*) and answered: *"HyDE solves the difficulty of creating effective fully
+  zero-shot dense retrieval systems when no relevance label is available [5]."*
+
+One question is an anecdote, not a measurement — Phase 3's benchmark is what settles
+whether this holds. But it is the first sign the technique does something real.
