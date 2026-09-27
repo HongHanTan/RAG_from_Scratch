@@ -66,6 +66,11 @@ def load_documents(corpus_dir: Path, metadata_path: Path) -> list[Document]:
         if not text:
             raise ValueError(f"document is empty: {doc_id}")
         record = metadata[doc_id]
+        if not isinstance(record, dict):
+            raise ValueError(
+                f"metadata entry '{doc_id}' in {metadata_path} must be an "
+                f"object, got {type(record).__name__}"
+            )
         try:
             title = record["title"]
             source = record["source"]

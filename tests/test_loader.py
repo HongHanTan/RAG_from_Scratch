@@ -117,3 +117,17 @@ def test_metadata_entry_missing_source_raises_actionable_value_error(tiny_corpus
     message = str(exc_info.value)
     assert str(tiny_corpus.metadata_path) in message
     assert "source" in message
+
+
+@pytest.mark.parametrize("bad_entry", ["oops", None, []])
+def test_metadata_entry_that_is_not_a_mapping_raises_actionable_value_error(
+    tiny_corpus: Config, bad_entry: object
+):
+    meta = json.loads(tiny_corpus.metadata_path.read_text(encoding="utf-8"))
+    meta["documents"]["alpha"] = bad_entry
+    tiny_corpus.metadata_path.write_text(json.dumps(meta), encoding="utf-8")
+    with pytest.raises(ValueError, match="alpha") as exc_info:
+        load_documents(tiny_corpus.corpus_dir, tiny_corpus.metadata_path)
+    message = str(exc_info.value)
+    assert str(tiny_corpus.metadata_path) in message
+    assert "alpha" in message
