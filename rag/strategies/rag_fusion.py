@@ -14,6 +14,10 @@ from rag.similarity import reciprocal_rank_fusion
 from rag.strategies.base import StrategyContext, StrategyResult, degrade_to_direct
 
 
+def _normalise(text: str) -> str:
+    return " ".join(text.casefold().split())
+
+
 class RagFusionStrategy:
     name = "rag-fusion"
 
@@ -32,7 +36,10 @@ class RagFusionStrategy:
         except LLMError as exc:
             return degrade_to_direct(question, ctx, f"rag-fusion rewrite failed: {exc}")
 
-        rewrites = [q for q in parse_query_list(raw) if q != question]
+        question_norm = _normalise(question)
+        rewrites = [
+            q for q in parse_query_list(raw) if _normalise(q) != question_norm
+        ][: self.n]
         if not rewrites:
             return degrade_to_direct(
                 question, ctx, "rag-fusion rewrite produced no usable queries"

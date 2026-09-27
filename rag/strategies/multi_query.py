@@ -14,6 +14,10 @@ from rag.similarity import merge_best_score
 from rag.strategies.base import StrategyContext, StrategyResult, degrade_to_direct
 
 
+def _normalise(text: str) -> str:
+    return " ".join(text.casefold().split())
+
+
 class MultiQueryStrategy:
     name = "multi-query"
 
@@ -32,7 +36,10 @@ class MultiQueryStrategy:
         except LLMError as exc:
             return degrade_to_direct(question, ctx, f"multi-query rewrite failed: {exc}")
 
-        rewrites = [q for q in parse_query_list(raw) if q != question]
+        question_norm = _normalise(question)
+        rewrites = [
+            q for q in parse_query_list(raw) if _normalise(q) != question_norm
+        ][: self.n]
         if not rewrites:
             return degrade_to_direct(
                 question, ctx, "multi-query rewrite produced no usable queries"

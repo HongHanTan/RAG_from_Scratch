@@ -104,7 +104,7 @@ def test_parse_query_list_strips_numbering():
 def test_parse_query_list_handles_bullets_and_blank_lines():
     from rag.prompts import parse_query_list
 
-    raw = "- first\n\n* second\n\n\n  third  \n"
+    raw = "- first\n\n* second\n\n\n  • third  \n"
     assert parse_query_list(raw) == ["first", "second", "third"]
 
 
@@ -118,3 +118,28 @@ def test_parse_query_list_of_blank_input_is_empty():
     from rag.prompts import parse_query_list
 
     assert parse_query_list("   \n\n ") == []
+
+
+def test_parse_query_list_drops_unmarked_preamble_and_signoff():
+    from rag.prompts import parse_query_list
+
+    raw = (
+        "Here are five alternative search queries:\n"
+        "1. how does ColBERT score documents\n"
+        "2. late interaction retrieval mechanism\n"
+        "I hope these help!"
+    )
+    assert parse_query_list(raw) == [
+        "how does ColBERT score documents",
+        "late interaction retrieval mechanism",
+    ]
+
+
+def test_parse_query_list_keeps_every_line_when_none_are_marked():
+    from rag.prompts import parse_query_list
+
+    raw = "first alternative phrasing\nsecond alternative phrasing"
+    assert parse_query_list(raw) == [
+        "first alternative phrasing",
+        "second alternative phrasing",
+    ]

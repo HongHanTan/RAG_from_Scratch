@@ -168,6 +168,27 @@ def test_multi_query_degrades_when_the_llm_returns_nothing_usable(tiny_corpus: C
     assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
 
 
+def test_multi_query_drops_rewrites_that_are_near_duplicates_of_the_question(
+    tiny_corpus: Config,
+):
+    reply = "1. What is cosine similarity?  \n2. What is cosine similarity?\n3. How does cosine similarity work?"
+    ctx = build_context(tiny_corpus, llm=FakeLLM(reply))
+    get_strategy("multi-query").run("what is cosine similarity?", ctx)
+    assert ctx.trace.queries == [
+        "what is cosine similarity?",
+        "How does cosine similarity work?",
+    ]
+
+
+def test_multi_query_truncates_rewrites_to_n(tiny_corpus: Config):
+    reply = "\n".join(f"{i}. rewrite {i}" for i in range(1, 9))
+    ctx = build_context(tiny_corpus, llm=FakeLLM(reply))
+    get_strategy("multi-query", n=3).run("q", ctx)
+    # question + at most n rewrites
+    assert len(ctx.trace.queries) == 4
+    assert len(ctx.trace.translation) == 3
+
+
 def test_rag_fusion_scores_are_labelled_rrf(tiny_corpus: Config):
     ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
     result = get_strategy("rag-fusion").run("q", ctx)
@@ -206,6 +227,26 @@ def test_rag_fusion_degrades_when_there_is_no_llm(tiny_corpus: Config):
     ctx = build_context(tiny_corpus, llm=None)
     result = get_strategy("rag-fusion").run("q", ctx)
     assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
+
+
+def test_rag_fusion_drops_rewrites_that_are_near_duplicates_of_the_question(
+    tiny_corpus: Config,
+):
+    reply = "1. What is cosine similarity?  \n2. What is cosine similarity?\n3. How does cosine similarity work?"
+    ctx = build_context(tiny_corpus, llm=FakeLLM(reply))
+    get_strategy("rag-fusion").run("what is cosine similarity?", ctx)
+    assert ctx.trace.queries == [
+        "what is cosine similarity?",
+        "How does cosine similarity work?",
+    ]
+
+
+def test_rag_fusion_truncates_rewrites_to_n(tiny_corpus: Config):
+    reply = "\n".join(f"{i}. rewrite {i}" for i in range(1, 9))
+    ctx = build_context(tiny_corpus, llm=FakeLLM(reply))
+    get_strategy("rag-fusion", n=3).run("q", ctx)
+    assert len(ctx.trace.queries) == 4
+    assert len(ctx.trace.translation) == 3
 
 
 # --- step-back -----------------------------------------------------------------

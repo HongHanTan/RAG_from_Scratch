@@ -90,19 +90,32 @@ Reply with the general question only, on one line.
 Specific question: {question}"""
 
 
+_LIST_MARKER = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s*")
+
+
 def parse_query_list(raw: str) -> list[str]:
     """Extract one query per line from a numbered or bulleted model reply.
 
     Models drift between "1." and "-" and occasionally repeat themselves, so
     the parsing is forgiving and deduplicates while preserving order.
+
+    Models also tend to wrap the list in a preamble ("Here are five
+    alternatives:") and a sign-off ("I hope these help!"). When at least one
+    line in the reply carries a list marker, only marked lines are kept, which
+    drops that surrounding chatter. When no line is marked, every non-blank
+    line is kept, since the model may have legitimately replied with a bare
+    list.
     """
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    any_marked = any(_LIST_MARKER.match(line) for line in lines)
+
     queries: list[str] = []
     seen: set[str] = set()
-    for line in raw.splitlines():
-        text = line.strip()
-        if not text:
+    for line in lines:
+        marked = _LIST_MARKER.match(line)
+        if any_marked and not marked:
             continue
-        text = re.sub(r"^\s*(?:\d+[.)]|[-*•])\s*", "", text).strip()
+        text = _LIST_MARKER.sub("", line).strip()
         if text and text not in seen:
             seen.add(text)
             queries.append(text)
