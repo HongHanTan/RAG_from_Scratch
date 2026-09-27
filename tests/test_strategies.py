@@ -293,3 +293,66 @@ def test_step_back_degrades_when_the_general_question_is_blank(tiny_corpus: Conf
     ctx = build_context(tiny_corpus, llm=FakeLLM("   "))
     result = get_strategy("step-back").run("q", ctx)
     assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
+
+
+# --- hyde ------------------------------------------------------------------
+
+HYDE_REPLY = (
+    "Cosine similarity measures the angle between two vectors in an inner "
+    "product space. Because it normalises for magnitude, two documents on the "
+    "same topic score highly even when one is far longer than the other."
+)
+
+
+def test_hyde_generates_a_hypothetical_document(tiny_corpus: Config):
+    llm = FakeLLM(HYDE_REPLY)
+    ctx = build_context(tiny_corpus, llm=llm)
+    get_strategy("hyde").run("what is cosine similarity?", ctx)
+    assert "what is cosine similarity?" in llm.prompts[0]
+
+
+def test_hyde_records_the_hypothetical_document(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(HYDE_REPLY))
+    get_strategy("hyde").run("q", ctx)
+    assert [(s.kind, s.text) for s in ctx.trace.translation] == [
+        ("hypothetical", HYDE_REPLY)
+    ]
+
+
+def test_hyde_searches_on_the_hypothetical_document(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(HYDE_REPLY))
+    get_strategy("hyde").run("q", ctx)
+    assert HYDE_REPLY in ctx.trace.queries
+
+
+def test_hyde_also_searches_the_original_question_by_default(tiny_corpus: Config):
+    # The hypothetical document can be wrong. Keeping the original question in
+    # the mix means a bad hallucination degrades the result rather than
+    # replacing it.
+    ctx = build_context(tiny_corpus, llm=FakeLLM(HYDE_REPLY))
+    get_strategy("hyde").run("q", ctx)
+    assert "q" in ctx.trace.queries
+
+
+def test_hyde_can_search_the_hypothetical_document_alone(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(HYDE_REPLY))
+    get_strategy("hyde", include_question=False).run("q", ctx)
+    assert ctx.trace.queries == [HYDE_REPLY]
+
+
+def test_hyde_returns_at_most_top_k(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(HYDE_REPLY))
+    assert len(get_strategy("hyde").run("q", ctx).retrieved) <= tiny_corpus.top_k
+
+
+def test_hyde_degrades_when_the_llm_fails(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FailingLLM())
+    result = get_strategy("hyde").run("q", ctx)
+    assert result.retrieved
+    assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
+
+
+def test_hyde_degrades_when_the_document_is_blank(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM("  \n "))
+    result = get_strategy("hyde").run("q", ctx)
+    assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)

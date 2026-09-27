@@ -93,6 +93,19 @@ Specific question: {question}"""
 _LIST_MARKER = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s*")
 
 
+HYDE_TEMPLATE = """Write a short passage that answers the question below, as
+it might appear in a technical paper or reference document.
+
+Write it as documentation, not as a reply: no preamble, no "the answer is",
+just the passage. Being factually wrong is acceptable — this text is used to
+search with, not to show anyone. Match the vocabulary and register a real
+document on this subject would use.
+
+Keep it under 120 words.
+
+Question: {question}"""
+
+
 def parse_query_list(raw: str) -> list[str]:
     """Extract one query per line from a numbered or bulleted model reply.
 

@@ -13,6 +13,7 @@ from rag.strategies.base import (
     degrade_to_direct,
 )
 from rag.strategies.direct import DirectStrategy
+from rag.strategies.hyde import HydeStrategy
 from rag.strategies.multi_query import MultiQueryStrategy
 from rag.strategies.rag_fusion import RagFusionStrategy
 from rag.strategies.step_back import StepBackStrategy
@@ -31,6 +32,7 @@ _REGISTRY: dict[str, type] = {
     MultiQueryStrategy.name: MultiQueryStrategy,
     RagFusionStrategy.name: RagFusionStrategy,
     StepBackStrategy.name: StepBackStrategy,
+    HydeStrategy.name: HydeStrategy,
 }
 
 STRATEGY_NAMES: tuple[str, ...] = tuple(_REGISTRY)
