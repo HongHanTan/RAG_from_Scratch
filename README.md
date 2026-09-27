@@ -202,19 +202,30 @@ wearing a lab coat.
 Phase 3 measures retrieval — not answer quality — against a 10-question gold
 set (`evaluation/gold.json`), using `python -m evaluation.benchmark`:
 
-| Strategy | Recall@20 | MRR | nDCG@20 | DocPrec@5 | LLM calls | Mean ms (warm) | Questions |
+| Strategy | Recall@20 | MRR@20 | nDCG@20 | DocPrec@5 | LLM calls | Mean ms (warm) | Questions |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| hyde | 0.558 | 0.358 | 0.315 | 0.660 | 1.0 | 196 | 10 |
-| step-back | 0.475 | 0.196 | 0.225 | 0.460 | 1.0 | 61 | 10 |
-| rag-fusion | 0.392 | 0.140 | 0.184 | 0.560 | 1.0 | 95 | 10 |
-| multi-query | 0.375 | 0.190 | 0.208 | 0.400 | 1.0 | 95 | 10 |
-| decomposition | 0.333 | 0.194 | 0.187 | 0.600 | 3.4 | 110 | 10 |
-| direct | 0.325 | 0.103 | 0.137 | 0.560 | 0.0 | 42 | 10 |
+| hyde | 0.558 | 0.358 | 0.315 | 0.660 | 1.0 | 197 | 10 |
+| step-back | 0.475 | 0.196 | 0.225 | 0.460 | 1.0 | 59 | 10 |
+| rag-fusion | 0.392 | 0.140 | 0.184 | 0.560 | 1.0 | 94 | 10 |
+| multi-query | 0.375 | 0.190 | 0.208 | 0.400 | 1.0 | 89 | 10 |
+| decomposition | 0.333 | 0.194 | 0.187 | 0.600 | 3.4 | 103 | 10 |
+| direct | 0.325 | 0.103 | 0.137 | 0.560 | 0.0 | 41 | 10 |
 
 Ran repeatedly (the full sweep, plus `multi-query` and `rag-fusion` run alone
 in both orders — see below); every metric column, `LLM calls` included, was
 bit-identical across runs. `Mean ms (warm)` moves a little run to run, as
 wall-clock numbers do, but no longer with strategy order.
+
+**That determinism is the LLM cache's, not the method's.** `.cache/` (the
+on-disk LLM cache these repeat runs share) is gitignored — it is not part of
+this repository. A clean clone has no cache to warm: it re-samples the model
+for every rewrite, hypothetical document, and sub-question, and gets
+different text back each time. This table is one draw of those LLM outputs
+over a 10-question gold set, with no variance estimate across draws. "Ran
+repeatedly" above means repeated against *this machine's* warm cache, which
+shows the columns are order-independent and re-run-stable — it does not mean
+a second person cloning this repository and running the benchmark cold would
+reproduce these exact numbers.
 
 **Why the table no longer reports raw `Mean ms`:** an earlier version of this
 table reported wall-clock time directly, and it was wrong in a way a
@@ -236,7 +247,12 @@ strategy order:
   small counting wrapper in `evaluation/benchmark.py`, kept separate from
   `rag.llm.GeminiLLM.call_count`, which deliberately counts only real API
   attempts). This is the real cost driver: it is what you would still pay if
-  the cache were empty, and it does not change with run order.
+  the cache were empty, and it does not change with run order. The column
+  counts query-translation calls only — the benchmark runs with
+  `generate=False`, so it never pays for the answer-generation call every
+  strategy, `direct` included, makes in production. `direct`'s `0.0` is the
+  cost of *this benchmark's* retrieval step, not of answering a question with
+  it.
 - **`Mean ms (warm)`** — mean `total_ms` measured with every strategy's own
   cache already warm, by running the gold set twice per strategy and scoring
   only the second pass. It measures retrieval and orchestration cost —
@@ -249,14 +265,21 @@ multi-query --strategy rag-fusion` and the same command with the two
 `--strategy` flags reversed produces identical `LLM calls` (1.0 for each,
 either order) — the property the old `Mean ms` column did not have.
 
-`Recall@20`, `MRR` and `nDCG@20` are measured at retrieval depth 20, not the
-answer prompt's `top_k=5` — at k=5 every strategy scores near zero (plain
+`Recall@20`, `MRR@20` and `nDCG@20` are measured at retrieval depth 20, not
+the answer prompt's `top_k=5` — at k=5 every strategy scores near zero (plain
 retrieval measured 0.050) and there is no headroom to tell them apart.
 `DocPrec@5` is reported separately, always at 5: it is the fraction of the
 chunks that would actually reach the answer prompt that come from the
 document holding the answer, and it is robust to the chunk-level gold set
 being incomplete (see below), since it only checks which paper a chunk came
-from, not which passage.
+from, not which passage. Reading the first 5 of a k=20 ranked list as
+`DocPrec@5` is only valid because `retrieval_depth` (20 by default) is at
+least `k`: the first 5 of a k=20 run are byte-identical to what a k=5 run
+would return today. That stops being true at any `--k` above `retrieval_depth`
+— `--k 50`, for instance, silently raises the depth to 50, which changes what
+each query retrieves before fusion and can change which chunks land in the
+first 5. Read `DocPrec@5` as meaningful at the benchmark's default depth, not
+as a claim that holds at every `--k`.
 
 **What this actually shows:** only HyDE clearly beats plain retrieval, and it
 does so on every column — recall, ranking, and document precision alike. The
@@ -294,7 +317,7 @@ gain within the noise of a 10-question sample.
 - **The chunk-level gold set is incomplete.** It names some answering
   passages per question, not all of them — hand-verifying every chunk that
   could answer a question against a 3M-character corpus is not workable. That
-  understates `Recall@20`, `MRR` and `nDCG@20` for every strategy equally, so
+  understates `Recall@20`, `MRR@20` and `nDCG@20` for every strategy equally, so
   the relative comparison holds, but none of those three numbers is an
   absolute quality score. `DocPrec@5` does not have this problem, which is
   why it is reported alongside them.
