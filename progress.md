@@ -14,9 +14,9 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 | 4 | Document loader | ✅ | `e6943af`, `e138637`, `f209fad` | 16 tests; all malformed-metadata shapes now actionable |
 | 5 | Token-aware chunking | ✅ | `f72b505` | 18 tests; 5,116 chunks, offsets independently verified |
 | 6 | Embeddings | ✅ | `dfde3c1` | 9 fast + 4 slow; review clean, no findings |
-| 7 | Similarity and top-k | ✅ | `7fd1286` | 16 tests; 105 total |
-| 8 | Vector store | 🔄 | | |
-| 9 | Trace | ⬜ | | |
+| 7 | Similarity and top-k | ✅ | `7fd1286` | 16 tests; review approved, 2 Minor |
+| 8 | Vector store | ✅ | `1937bf1` | 13 tests; 5,116-chunk index, 6-18 ms search, 9 MB |
+| 9 | Trace | 🔄 | | |
 | 10 | Gemini client (cache + retry) | ⬜ | | needs API key to verify model id |
 | 11 | Prompt template and generation | ⬜ | | |
 | 12 | Pipeline | ⬜ | | |
@@ -42,6 +42,12 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   re-deriving that slice could never fail. Caught by the Task 5 reviewer. Replaced with
   a real check (token-surface correspondence and monotonicity over 766k tokens), which
   found zero genuine offset errors.
+- **Task 7, Minor** — `cosine_similarity` re-normalises defensively, which is not
+  bit-exact for input that is already unit-length float32: max abs difference ~6e-8, so
+  a vector's self-similarity returns `1.0000001` rather than exactly `1.0`. Harmless at
+  the tolerances used, but any future code that asserts an exact `1.0` will fail.
+- **Task 7, Minor** — no test covers a 1-D `matrix` argument (only a 1-D query).
+  `atleast_2d` treats it as a single item, matching convention, but it is untested.
 - **Task 3, Minor** — `save_metadata` in `scripts/fetch_corpus.py` uses a single
   `write_text` (truncate-then-write), not a temp-file + `Path.replace` swap. A kill
   inside that window leaves `data/metadata.json` truncated, which makes `json.loads`
@@ -83,6 +89,11 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   HTML they carry title and authors.
 
 ## Decisions and deviations
+
+- **Brute-force search is comfortably fast at this scale**, which is the claim the README
+  makes. Measured over the real 5,116-chunk index: 18.3 ms; over a synthetic matrix of
+  the same shape: 6.3 ms. Index file is 9.0 MB. No approximate index needed or wanted
+  here; the O(n) limit is documented rather than hidden.
 
 - **Retrieval quality sanity check (Task 6).** Embedded 853 chunks spanning all 38
   documents and queried three of the plan's demo questions. "How does ColBERT score a
