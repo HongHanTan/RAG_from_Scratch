@@ -1,12 +1,15 @@
 import pytest
 
 from evaluation.benchmark import StrategyScore, format_table
+from rag.config import Config
+from rag.pipeline import ask, build_index
+from tests.conftest import FakeEmbedder, FakeLLM
 
 
 def _scores():
     return [
-        StrategyScore("direct", 0.62, 0.55, 0.58, 0.56, 41.6, 10),
-        StrategyScore("rag-fusion", 0.74, 0.61, 0.66, 0.60, 1502.3, 10),
+        StrategyScore("direct", 0.62, 0.55, 0.58, 0.56, 0.0, 41.6, 10),
+        StrategyScore("rag-fusion", 0.74, 0.61, 0.66, 0.60, 1.0, 1502.3, 10),
     ]
 
 
@@ -19,6 +22,18 @@ def test_table_has_a_row_per_strategy():
 def test_table_names_the_k_it_measured():
     assert "Recall@20" in format_table(_scores(), k=20)
     assert "nDCG@20" in format_table(_scores(), k=20)
+
+
+def test_table_reports_llm_calls_and_warm_ms_not_raw_mean_ms():
+    # The old "Mean ms" column measured cache ordering, not strategy cost:
+    # two strategies that build an identical prompt share an LLM cache key,
+    # so whichever strategy STRATEGY_NAMES puts first pays for every rewrite
+    # and the other one is all cache hits. LLM calls and a warm-cache timing
+    # are both order-independent.
+    table = format_table(_scores(), k=20)
+    assert "LLM calls" in table
+    assert "Mean ms (warm)" in table
+    assert "| Mean ms |" not in table
 
 
 def test_table_always_reports_doc_precision_at_5_regardless_of_k():
@@ -69,3 +84,74 @@ def test_an_undegraded_trace_passes_the_check():
     trace = Trace(question="q")
     trace.note("generation served from cache")
     check_not_degraded(trace)
+
+
+# --- _CallCountingLLM --------------------------------------------------------
+#
+# The mean-ms column measured cache ordering rather than strategy cost:
+# multi-query and rag-fusion build an identical rewrite prompt for the same
+# question, so they share one LLM cache key, and whichever name
+# STRATEGY_NAMES lists first pays for every rewrite while the other is all
+# cache hits. `LLM calls` counts real cost instead -- how many times a
+# strategy *asks* the model for something -- and that count cannot be
+# perturbed by cache state or run order.
+
+
+def test_counting_llm_counts_every_call_including_repeats():
+    from evaluation.benchmark import _CallCountingLLM
+
+    llm = _CallCountingLLM(FakeLLM("same answer"))
+    llm.generate("prompt a")
+    llm.generate("prompt a")  # a real cache hit would still be a logical call
+    llm.generate("prompt b")
+    assert llm.logical_call_count == 3
+
+
+def test_counting_llm_starts_at_zero():
+    from evaluation.benchmark import _CallCountingLLM
+
+    llm = _CallCountingLLM(FakeLLM())
+    assert llm.logical_call_count == 0
+
+
+def test_counting_llm_does_not_alter_the_returned_text():
+    from evaluation.benchmark import _CallCountingLLM
+
+    llm = _CallCountingLLM(FakeLLM("exact text"))
+    assert llm.generate("anything") == "exact text"
+
+
+def test_direct_strategy_never_calls_the_llm(tiny_corpus: Config):
+    # `direct` never touches ctx.llm at all, so wrapping it must not
+    # manufacture calls that did not happen.
+    from evaluation.benchmark import _CallCountingLLM
+
+    store = build_index(tiny_corpus, FakeEmbedder())
+    counting_llm = _CallCountingLLM(FakeLLM())
+    ask(
+        "what is cosine similarity?",
+        store,
+        FakeEmbedder(),
+        counting_llm,
+        tiny_corpus,
+        strategy="direct",
+        generate=False,
+    )
+    assert counting_llm.logical_call_count == 0
+
+
+def test_counting_llm_counts_a_strategy_that_does_call_the_llm(tiny_corpus: Config):
+    from evaluation.benchmark import _CallCountingLLM
+
+    store = build_index(tiny_corpus, FakeEmbedder())
+    counting_llm = _CallCountingLLM(FakeLLM("query one\nquery two"))
+    ask(
+        "what is cosine similarity?",
+        store,
+        FakeEmbedder(),
+        counting_llm,
+        tiny_corpus,
+        strategy="multi-query",
+        generate=False,
+    )
+    assert counting_llm.logical_call_count == 1

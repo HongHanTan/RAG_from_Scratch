@@ -1,6 +1,6 @@
 """Run every strategy over the gold set and report how they compare.
 
-Four deliberate choices, each one a thing that would otherwise make the
+Six deliberate choices, each one a thing that would otherwise make the
 numbers lie:
 
 - **Chunk metrics are measured at k=20, not the answer prompt's k=5.**
@@ -25,6 +25,26 @@ numbers lie:
 - **A degraded trace is fatal.** Every strategy falls back to plain retrieval
   when the LLM is unavailable, recording a note. Averaging those in would
   report "no technique helps" when the real finding is "the API key expired".
+
+- **`LLM calls` counts logical calls, not cache hits or misses.** Raw
+  wall-clock time is not comparable across strategies here: multi-query and
+  rag-fusion build the *same* rewrite prompt (`MULTI_QUERY_TEMPLATE`, same
+  question, same `n`) and therefore hit the *same* cache key in
+  `rag/llm.py`'s on-disk cache. Whichever strategy `STRATEGY_NAMES` happens to
+  list first pays for every rewrite; the other gets them all as free cache
+  hits. Reordering the tuple would swap which one "looks fast". `LLM calls` is
+  the count of `.generate()` calls a strategy makes per question regardless of
+  whether the cache served it, via a small counting wrapper
+  (`_CallCountingLLM`) around the LLM. It cannot be perturbed by cache state
+  or strategy order, and it is the real cost driver.
+
+- **`Mean ms (warm)` is measured with every strategy's own cache already
+  warm.** Each strategy runs over the gold set twice; only the second pass is
+  scored. This still cannot be compared to a cold call's latency -- it
+  measures retrieval and orchestration cost (embedding, vector search,
+  merging/fusing lists, and a cache read), not the cost of an actual LLM
+  round trip. Read it as "how much does this strategy cost beyond the LLM
+  call", not as an end-to-end latency figure.
 
 Generation is skipped throughout (`generate=False`): these are retrieval
 metrics, the answer is never read, and generating one would cost a call per
@@ -63,8 +83,34 @@ class StrategyScore:
     mrr: float
     ndcg_at_k: float
     doc_precision: float
-    mean_ms: float
+    llm_calls: float
+    mean_ms_warm: float
     questions: int
+
+
+class _CallCountingLLM:
+    """Wraps an LLM to count logical `.generate()` calls, hit or miss.
+
+    `rag.llm.GeminiLLM.call_count` deliberately counts only real API
+    attempts -- a cache hit is free and does not increment it, which is right
+    for "how many times did this actually reach Google". The benchmark wants
+    the opposite question: how many times a strategy *asks* the model for
+    something. That is the real cost driver, and unlike wall-clock time it
+    cannot be perturbed by cache state or by which strategy happened to run
+    (and therefore cache its prompt) first.
+
+    Everything but `.generate()` is left alone -- there is no need to
+    intercept it, since strategies only ever call `.generate(prompt)` on the
+    LLM they are given.
+    """
+
+    def __init__(self, llm) -> None:
+        self._llm = llm
+        self.logical_call_count = 0
+
+    def generate(self, prompt: str) -> str:
+        self.logical_call_count += 1
+        return self._llm.generate(prompt)
 
 
 def check_not_degraded(trace: Trace) -> None:
@@ -95,26 +141,53 @@ def score_strategy(
     top_k=5: truncating a ranked list further does not change the order of
     what survives, so the first 5 of the k=20 list are exactly what a k=5 run
     would have returned.
+
+    The gold set is run twice. The first pass warms this strategy's own
+    entries in the shared on-disk LLM cache; only the second pass is scored.
+    That is what makes `mean_ms_warm` order-independent -- without it,
+    whichever strategy happens to run first for a given rewrite prompt pays
+    for the cache miss and every other strategy sharing that prompt gets it
+    for free. Retrieval is deterministic given a warm cache, so the two
+    passes agree on recall/MRR/nDCG/DocPrec; only the timings and the LLM-call
+    count are taken from the (second, warm) pass that is kept.
+
+    `llm` is wrapped in `_CallCountingLLM` so `llm_calls` counts every logical
+    `.generate()` call, cache hit or miss.
     """
+    counting_llm = _CallCountingLLM(llm) if llm is not None else None
+    effective_llm = counting_llm if counting_llm is not None else llm
+
+    def run_once() -> list[tuple[Trace, int]]:
+        results = []
+        for question in gold:
+            if counting_llm is not None:
+                counting_llm.logical_call_count = 0
+            trace = ask(
+                question.question,
+                store,
+                embedder,
+                effective_llm,
+                config,
+                k=k,
+                strategy=strategy,
+                generate=False,
+            )
+            check_not_degraded(trace)
+            calls = counting_llm.logical_call_count if counting_llm is not None else 0
+            results.append((trace, calls))
+        return results
+
+    run_once()  # warm-up: not scored
+    traced = run_once()
+
     recalls: list[float] = []
     rrs: list[float] = []
     ndcgs: list[float] = []
     doc_precisions: list[float] = []
     times: list[float] = []
+    llm_calls: list[float] = []
 
-    for question in gold:
-        trace = ask(
-            question.question,
-            store,
-            embedder,
-            llm,
-            config,
-            k=k,
-            strategy=strategy,
-            generate=False,
-        )
-        check_not_degraded(trace)
-
+    for question, (trace, calls) in zip(gold, traced):
         retrieved_ids = [r.chunk.chunk_id for r in trace.retrieved]
         retrieved_doc_ids = [r.chunk.doc_id for r in trace.retrieved]
         relevant = relevant_chunk_ids(question, chunks)
@@ -125,6 +198,7 @@ def score_strategy(
             doc_precision_at_k(retrieved_doc_ids, question.doc_id, DOC_PRECISION_K)
         )
         times.append(trace.total_ms)
+        llm_calls.append(calls)
 
     n = len(gold)
     mean = lambda values: sum(values) / n if n else 0.0  # noqa: E731
@@ -134,22 +208,30 @@ def score_strategy(
         mrr=mean(rrs),
         ndcg_at_k=mean(ndcgs),
         doc_precision=mean(doc_precisions),
-        mean_ms=mean(times),
+        llm_calls=mean(llm_calls),
+        mean_ms_warm=mean(times),
         questions=n,
     )
 
 
 def format_table(scores: list[StrategyScore], k: int) -> str:
-    """Render scores as a markdown table, best recall first."""
+    """Render scores as a markdown table, best recall first.
+
+    `LLM calls` and `Mean ms (warm)` replace the single `Mean ms` column that
+    used to be reported: raw wall-clock time was measuring which strategy's
+    LLM cache happened to be warm, not its actual cost (see the module
+    docstring). Neither replacement column can be perturbed by cache state or
+    strategy run order.
+    """
     header = (
         f"| Strategy | Recall@{k} | MRR | nDCG@{k} | DocPrec@{DOC_PRECISION_K} "
-        "| Mean ms | Questions |\n"
-        "|---|---:|---:|---:|---:|---:|---:|"
+        "| LLM calls | Mean ms (warm) | Questions |\n"
+        "|---|---:|---:|---:|---:|---:|---:|---:|"
     )
     rows = [
         f"| {s.strategy} | {s.recall_at_k:.3f} | {s.mrr:.3f} | "
-        f"{s.ndcg_at_k:.3f} | {s.doc_precision:.3f} | {s.mean_ms:.0f} | "
-        f"{s.questions} |"
+        f"{s.ndcg_at_k:.3f} | {s.doc_precision:.3f} | {s.llm_calls:.1f} | "
+        f"{s.mean_ms_warm:.0f} | {s.questions} |"
         for s in sorted(scores, key=lambda s: (-s.recall_at_k, s.strategy))
     ]
     return "\n".join([header, *rows])
