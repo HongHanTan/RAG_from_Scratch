@@ -509,3 +509,26 @@ def test_a_failed_sub_answer_does_not_abort_the_whole_strategy(tiny_corpus: Conf
     result = get_strategy("decomposition").run("q", ctx)
     assert result.retrieved
     assert any("sub-question" in n for n in ctx.trace.notes)
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Sure, here's a more general question:\nWhat is vector similarity?",
+        "What is vector similarity?",
+        "1. What is vector similarity?",
+        "What is vector similarity?\nHope that helps!",
+        "Here you go:\nWhat is vector similarity?\nLet me know if you need more.",
+        "**What is vector similarity?**",
+    ],
+)
+def test_step_back_finds_the_question_among_model_chatter(
+    tiny_corpus: Config, reply: str
+):
+    # The model is asked for one bare line and frequently adds a preamble, a
+    # sign-off, or both. Picking the first line searches the preamble; picking
+    # the last searches the sign-off. Neither positional rule survives contact
+    # with a real model, so the question is identified by looking like one.
+    ctx = build_context(tiny_corpus, llm=FakeLLM(reply))
+    get_strategy("step-back").run("how does cosine handle magnitude?", ctx)
+    assert ctx.trace.queries[1] == "What is vector similarity?"

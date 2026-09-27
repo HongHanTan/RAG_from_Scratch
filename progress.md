@@ -60,6 +60,12 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-2-query-translation.md](docs/supe
 
 ### Phase 2 carried items
 
+- **Task 8, Minor** — recursive decomposition accumulates prior Q/A pairs into each
+  later sub-question's prompt with no length cap; the "two sentences at most" limit is
+  prompt-only, not enforced. Harmless at the default `max_sub_questions=3` (~2 pairs),
+  unbounded in principle. `max_sub_questions` is not exposed on the CLI, so nothing can
+  reach the bad case today. Revisit if it ever is.
+
 - **Task 6, IMPORTANT — queued fix.** `step_back.py` takes `raw.splitlines()[0]` with no
   preamble stripping, so a reply like *"Sure, here's a more general question:
 What is

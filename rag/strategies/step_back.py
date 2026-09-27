@@ -17,6 +17,30 @@ from rag.similarity import merge_best_score
 from rag.strategies.base import StrategyContext, StrategyResult, degrade_to_direct
 
 
+def _pick_question(raw: str) -> str:
+    """Find the general question in a reply that may be wrapped in chatter.
+
+    The model is asked for one bare line and routinely ignores that, adding a
+    preamble ("Sure, here's a more general question:"), a sign-off ("Hope that
+    helps!"), or both. Neither positional rule survives that: taking the first
+    line picks the preamble, taking the last picks the sign-off.
+
+    So the question is identified by looking like one — a line ending in "?".
+    Where several do, the first wins; where none does, the longest non-blank
+    candidate is the best remaining guess, which handles a model that drops the
+    question mark. Surrounding markdown emphasis is stripped, since models
+    bold a single-line answer surprisingly often.
+    """
+    candidates = [c.strip().strip("*_").strip() for c in parse_query_list(raw)]
+    candidates = [c for c in candidates if c]
+    if not candidates:
+        return ""
+    questions = [c for c in candidates if c.endswith("?")]
+    if questions:
+        return questions[0]
+    return max(candidates, key=len)
+
+
 class StepBackStrategy:
     name = "step-back"
 
@@ -30,16 +54,7 @@ class StepBackStrategy:
         except LLMError as exc:
             return degrade_to_direct(question, ctx, f"step-back failed: {exc}")
 
-        # parse_query_list only drops unmarked chatter when some other line
-        # IS marked (see its docstring). The model here is asked for a single
-        # unmarked line, so a preamble it adds anyway ("Sure, here's a more
-        # general question:") is not filtered out and survives as its own
-        # candidate alongside the real question. Preambles precede the
-        # payload and the template asks for no sign-off, so the last
-        # candidate is the question; a bare reply or a single numbered line
-        # both leave exactly one candidate, so this is a no-op for them.
-        candidates = parse_query_list(raw)
-        general = candidates[-1] if candidates else ""
+        general = _pick_question(raw)
         if not general:
             return degrade_to_direct(
                 question, ctx, "step-back produced no general question"
