@@ -64,4 +64,5 @@ def degrade_to_direct(
     """Fall back to plain retrieval, recording why on the trace."""
     ctx.trace.note(f"{reason}; degraded to direct retrieval")
     ctx.trace.queries = [question]
-    return StrategyResult(retrieved=ctx.search([question], ctx.config.top_k)[0])
+    results = ctx.search([question], ctx.config.retrieval_depth)[0]
+    return StrategyResult(retrieved=results[: ctx.config.top_k])

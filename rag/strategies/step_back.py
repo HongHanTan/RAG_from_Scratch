@@ -92,5 +92,5 @@ class StepBackStrategy:
         ctx.trace.add_translation("step_back", general)
         queries = [question, general]
         ctx.trace.queries = queries
-        lists = ctx.search(queries, ctx.config.top_k)
+        lists = ctx.search(queries, ctx.config.retrieval_depth)
         return StrategyResult(retrieved=merge_best_score(lists)[: ctx.config.top_k])

@@ -10,6 +10,5 @@ class DirectStrategy:
 
     def run(self, question: str, ctx: StrategyContext) -> StrategyResult:
         ctx.trace.queries = [question]
-        return StrategyResult(
-            retrieved=ctx.search([question], ctx.config.top_k)[0]
-        )
+        results = ctx.search([question], ctx.config.retrieval_depth)[0]
+        return StrategyResult(retrieved=results[: ctx.config.top_k])

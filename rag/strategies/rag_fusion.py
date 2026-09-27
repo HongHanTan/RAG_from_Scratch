@@ -50,7 +50,7 @@ class RagFusionStrategy:
 
         queries = [question, *rewrites]
         ctx.trace.queries = queries
-        lists = ctx.search(queries, ctx.config.top_k)
+        lists = ctx.search(queries, ctx.config.retrieval_depth)
         return StrategyResult(
             retrieved=reciprocal_rank_fusion(lists)[: ctx.config.top_k]
         )

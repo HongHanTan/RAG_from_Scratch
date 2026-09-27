@@ -69,7 +69,7 @@ class DecompositionStrategy:
             all_results = []
             for sub_question in sub_questions:
                 ctx.trace.add_translation("sub_question", sub_question)
-                results = ctx.search([sub_question], ctx.config.top_k)[0]
+                results = ctx.search([sub_question], ctx.config.retrieval_depth)[0]
                 all_results.append(results)
 
                 prior = ""

@@ -615,3 +615,22 @@ def test_step_back_keeps_a_question_that_addresses_the_reader(tiny_corpus: Confi
     ctx = build_context(tiny_corpus, llm=FakeLLM("How do you measure vector similarity?"))
     get_strategy("step-back").run("q", ctx)
     assert ctx.trace.queries[1] == "How do you measure vector similarity?"
+
+
+# --- retrieval depth vs top_k -------------------------------------------------
+
+def test_strategies_retrieve_at_depth_then_truncate_to_top_k(tiny_corpus: Config):
+    from dataclasses import replace
+
+    deep = replace(tiny_corpus, retrieval_depth=6, top_k=2)
+    ctx = build_context(deep, llm=FakeLLM(MULTI_QUERY_REPLY))
+    result = get_strategy("multi-query").run("q", ctx)
+    assert len(result.retrieved) <= 2
+
+
+def test_direct_also_honours_retrieval_depth(tiny_corpus: Config):
+    from dataclasses import replace
+
+    deep = replace(tiny_corpus, retrieval_depth=6, top_k=2)
+    ctx = build_context(deep, llm=None)
+    assert len(get_strategy("direct").run("q", ctx).retrieved) <= 2

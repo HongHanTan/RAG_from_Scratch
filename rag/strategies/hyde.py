@@ -56,7 +56,7 @@ class HydeStrategy:
         ctx.trace.add_translation("hypothetical", document)
         queries = [question, document] if self.include_question else [document]
         ctx.trace.queries = queries
-        lists = ctx.search(queries, ctx.config.top_k)
+        lists = ctx.search(queries, ctx.config.retrieval_depth)
         if self.include_question:
             merged = reciprocal_rank_fusion(lists)
         else:

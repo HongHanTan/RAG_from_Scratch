@@ -41,6 +41,14 @@ class Config:
     chunk_overlap: int = 50
     max_seq_tokens: int = 256
     top_k: int = 5
+    retrieval_depth: int = 20
+    """How many chunks each individual query retrieves, before combination.
+
+    Distinct from `top_k`, which is how many survive into the answer. Keeping
+    them separate matters for the multi-query strategies: if each of five
+    rewrites retrieved only `top_k` chunks, fusion would have almost nothing
+    to fuse and RAG-Fusion could not differ meaningfully from a plain union.
+    """
     corpus_dir: Path = Path("data/corpus")
     metadata_path: Path = Path("data/metadata.json")
     index_path: Path = Path("data/index.npz")
@@ -61,6 +69,12 @@ class Config:
             raise ValueError(
                 f"chunk_tokens ({self.chunk_tokens}) exceeds max_seq_tokens "
                 f"({self.max_seq_tokens}); chunks would be silently truncated"
+            )
+        if self.retrieval_depth < self.top_k:
+            raise ValueError(
+                f"retrieval_depth ({self.retrieval_depth}) must be at least "
+                f"top_k ({self.top_k}); each query retrieves at depth and the "
+                "combined result is then truncated to top_k"
             )
 
     @classmethod

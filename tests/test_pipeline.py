@@ -145,3 +145,29 @@ def test_ask_rejects_an_unknown_strategy(tiny_corpus: Config):
     store = build_index(tiny_corpus, FakeEmbedder())
     with pytest.raises(ValueError, match="nope"):
         ask("q", store, FakeEmbedder(), FakeLLM(), tiny_corpus, strategy="nope")
+
+
+def test_ask_can_skip_generation(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder())
+    llm = FakeLLM()
+    trace = ask("q", store, FakeEmbedder(), llm, tiny_corpus, generate=False)
+    assert trace.retrieved
+    assert trace.answer is None
+    assert llm.prompts == []
+    assert [t.name for t in trace.timings] == ["embed", "search"]
+
+
+def test_ask_without_generation_still_uses_the_llm_for_translation(
+    tiny_corpus: Config,
+):
+    # generate=False must skip the *answer*, not the rewrite -- otherwise the
+    # benchmark would measure every strategy as plain retrieval.
+    store = build_index(tiny_corpus, FakeEmbedder())
+    llm = FakeLLM("1. first rewrite\n2. second rewrite")
+    trace = ask(
+        "q", store, FakeEmbedder(), llm, tiny_corpus,
+        strategy="multi-query", generate=False,
+    )
+    assert len(llm.prompts) == 1
+    assert trace.answer is None
+    assert len(trace.queries) == 3

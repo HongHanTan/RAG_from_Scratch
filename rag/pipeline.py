@@ -64,6 +64,7 @@ def ask(
     k: int | None = None,
     strategy: str = "direct",
     strategy_options: dict | None = None,
+    generate: bool = True,
 ) -> Trace:
     """Answer one question. Pass llm=None to retrieve without generating.
 
@@ -79,7 +80,11 @@ def ask(
         store=store,
         embedder=embedder,
         llm=llm,
-        config=replace(config, top_k=effective_k),
+        config=replace(
+            config,
+            top_k=effective_k,
+            retrieval_depth=max(config.retrieval_depth, effective_k),
+        ),
         trace=trace,
     )
     result = chosen.run(question, ctx)
@@ -87,6 +92,12 @@ def ask(
 
     if llm is None:
         trace.note("retrieval only: no LLM configured")
+        return trace
+
+    if not generate:
+        # The strategy still used the LLM to translate the query; only the
+        # final answer is skipped. The benchmark measures retrieval, and
+        # generating an answer it never reads would cost a call per question.
         return trace
 
     generate_answer(

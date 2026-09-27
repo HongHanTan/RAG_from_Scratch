@@ -67,3 +67,18 @@ def test_env_file_is_a_fallback_not_an_override(tmp_path: Path):
     p.write_text("GOOGLE_API_KEY=from-file\n", encoding="utf-8")
     cfg = Config.from_env(env={"GOOGLE_API_KEY": "from-env"}, env_file=p)
     assert cfg.api_key == "from-env"
+
+
+def test_retrieval_depth_defaults_above_top_k():
+    # Each query retrieves deeper than the final answer needs, so fusion has
+    # material to work with. If they were equal, RAG-Fusion would fuse five
+    # 5-item lists down to 5 and could not differ much from a plain union.
+    cfg = Config()
+    assert cfg.retrieval_depth == 20
+    assert cfg.retrieval_depth >= cfg.top_k
+
+
+def test_retrieval_depth_below_top_k_is_rejected():
+    import pytest
+    with pytest.raises(ValueError, match="retrieval_depth"):
+        Config(retrieval_depth=3, top_k=5)
