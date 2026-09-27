@@ -6,6 +6,7 @@ from rag.config import Config, load_env_file
 def test_defaults_match_the_spec():
     cfg = Config()
     assert cfg.embedding_model == "sentence-transformers/all-MiniLM-L6-v2"
+    assert cfg.llm_model == "gemini-3.5-flash-lite"
     assert cfg.chunk_tokens == 200
     assert cfg.chunk_overlap == 50
     assert cfg.max_seq_tokens == 256

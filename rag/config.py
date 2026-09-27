@@ -36,7 +36,7 @@ def load_env_file(path: Path) -> dict[str, str]:
 @dataclass(frozen=True)
 class Config:
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    llm_model: str = "gemini-2.0-flash"
+    llm_model: str = "gemini-3.5-flash-lite"
     chunk_tokens: int = 200
     chunk_overlap: int = 50
     max_seq_tokens: int = 256
