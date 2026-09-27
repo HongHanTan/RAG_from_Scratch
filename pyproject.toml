@@ -1,0 +1,22 @@
+[project]
+name = "rag-from-scratch"
+version = "0.1.0"
+description = "Retrieval-augmented generation implemented without a RAG framework"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+    "torch>=2.0",
+    "transformers>=4.40",
+    "google-genai>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not slow and not live'"
+markers = [
+    "slow: loads the real embedding model (deselected by default)",
+    "live: calls the real Gemini API (deselected by default)",
+]
