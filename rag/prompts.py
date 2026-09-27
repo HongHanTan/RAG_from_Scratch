@@ -7,6 +7,8 @@ strategies. Later phases append their templates here.
 
 from __future__ import annotations
 
+import re
+
 from rag.chunking import RetrievedChunk
 
 NO_CONTEXT = "(no documents retrieved)"
@@ -61,3 +63,35 @@ def build_answer_prompt(
             f"do not cite these):\n{extra_context}"
         )
     return ANSWER_TEMPLATE.format(context=context, question=question)
+
+
+MULTI_QUERY_TEMPLATE = """You are helping a search system find relevant documents.
+
+Rewrite the question below into {n} alternative search queries. Each should
+approach the same information need from a different angle — different
+vocabulary, a broader or narrower framing, or an underlying concept the
+question implies. The goal is that at least one rewrite matches wording the
+documents actually use.
+
+Reply with one query per line, numbered. No other text.
+
+Question: {question}"""
+
+
+def parse_query_list(raw: str) -> list[str]:
+    """Extract one query per line from a numbered or bulleted model reply.
+
+    Models drift between "1." and "-" and occasionally repeat themselves, so
+    the parsing is forgiving and deduplicates while preserving order.
+    """
+    queries: list[str] = []
+    seen: set[str] = set()
+    for line in raw.splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        text = re.sub(r"^\s*(?:\d+[.)]|[-*•])\s*", "", text).strip()
+        if text and text not in seen:
+            seen.add(text)
+            queries.append(text)
+    return queries

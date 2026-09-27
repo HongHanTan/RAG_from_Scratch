@@ -88,3 +88,33 @@ def test_braces_in_chunk_text_do_not_break_formatting():
     chunks = [RetrievedChunk(Chunk("a:0", "a", 0, "code: {'k': 1}", 0, 5, 0, 14), 0.5, 1)]
     prompt = build_answer_prompt("q", chunks)
     assert "{'k': 1}" in prompt
+
+
+def test_parse_query_list_strips_numbering():
+    from rag.prompts import parse_query_list
+
+    raw = "1. first question\n2. second question\n3. third question"
+    assert parse_query_list(raw) == [
+        "first question",
+        "second question",
+        "third question",
+    ]
+
+
+def test_parse_query_list_handles_bullets_and_blank_lines():
+    from rag.prompts import parse_query_list
+
+    raw = "- first\n\n* second\n\n\n  third  \n"
+    assert parse_query_list(raw) == ["first", "second", "third"]
+
+
+def test_parse_query_list_drops_duplicates_preserving_order():
+    from rag.prompts import parse_query_list
+
+    assert parse_query_list("1. same\n2. same\n3. other") == ["same", "other"]
+
+
+def test_parse_query_list_of_blank_input_is_empty():
+    from rag.prompts import parse_query_list
+
+    assert parse_query_list("   \n\n ") == []

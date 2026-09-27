@@ -13,6 +13,7 @@ from rag.strategies.base import (
     degrade_to_direct,
 )
 from rag.strategies.direct import DirectStrategy
+from rag.strategies.multi_query import MultiQueryStrategy
 
 __all__ = [
     "Strategy",
@@ -25,6 +26,7 @@ __all__ = [
 
 _REGISTRY: dict[str, type] = {
     DirectStrategy.name: DirectStrategy,
+    MultiQueryStrategy.name: MultiQueryStrategy,
 }
 
 STRATEGY_NAMES: tuple[str, ...] = tuple(_REGISTRY)

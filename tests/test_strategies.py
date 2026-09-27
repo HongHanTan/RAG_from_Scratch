@@ -97,3 +97,72 @@ def test_registry_exposes_every_strategy_name():
 def test_unknown_strategy_is_rejected_by_name():
     with pytest.raises(ValueError, match="nope"):
         get_strategy("nope")
+
+
+# --- multi-query ---------------------------------------------------------------
+
+MULTI_QUERY_REPLY = """1. How does cosine similarity work?
+2. What does the angle between vectors measure?
+3. Why is magnitude ignored in cosine similarity?"""
+
+
+def test_multi_query_sends_the_question_to_the_llm(tiny_corpus: Config):
+    llm = FakeLLM(MULTI_QUERY_REPLY)
+    ctx = build_context(tiny_corpus, llm=llm)
+    get_strategy("multi-query").run("what is cosine?", ctx)
+    assert "what is cosine?" in llm.prompts[0]
+
+
+def test_multi_query_records_the_original_plus_the_rewrites(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
+    get_strategy("multi-query").run("what is cosine?", ctx)
+    assert ctx.trace.queries[0] == "what is cosine?"
+    assert "How does cosine similarity work?" in ctx.trace.queries
+    assert len(ctx.trace.queries) == 4
+
+
+def test_multi_query_records_each_rewrite_as_a_translation_step(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
+    get_strategy("multi-query").run("q", ctx)
+    kinds = [s.kind for s in ctx.trace.translation]
+    assert kinds == ["query", "query", "query"]
+
+
+def test_multi_query_returns_at_most_top_k(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
+    result = get_strategy("multi-query").run("q", ctx)
+    assert len(result.retrieved) <= tiny_corpus.top_k
+
+
+def test_multi_query_deduplicates_chunks_found_by_several_queries(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
+    result = get_strategy("multi-query").run("q", ctx)
+    ids = [r.chunk.chunk_id for r in result.retrieved]
+    assert len(ids) == len(set(ids))
+
+
+def test_multi_query_results_are_ranked_from_one(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM(MULTI_QUERY_REPLY))
+    result = get_strategy("multi-query").run("q", ctx)
+    assert [r.rank for r in result.retrieved] == list(range(1, len(result.retrieved) + 1))
+
+
+def test_multi_query_degrades_when_the_llm_fails(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FailingLLM())
+    result = get_strategy("multi-query").run("q", ctx)
+    assert result.retrieved
+    assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
+
+
+def test_multi_query_degrades_when_there_is_no_llm(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=None)
+    result = get_strategy("multi-query").run("q", ctx)
+    assert result.retrieved
+    assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
+
+
+def test_multi_query_degrades_when_the_llm_returns_nothing_usable(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus, llm=FakeLLM("   "))
+    result = get_strategy("multi-query").run("q", ctx)
+    assert result.retrieved
+    assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
