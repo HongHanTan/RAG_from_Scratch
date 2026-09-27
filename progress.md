@@ -11,8 +11,8 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 | 1 | Scaffolding, Config, test fixtures | ✅ | `1ae1bad` | 9 tests pass; review clean |
 | 2 | HTML text extraction | ✅ | `77f3c41`..`b497946` | 31 tests pass; 3 review rounds, all findings fixed |
 | 3 | Corpus fetch script + fetch corpus | ✅ | `cdd5aee`, `ae41c4f` | 38 docs, all titles verified; 46 tests |
-| 4 | Document loader | 🔄 | | |
-| 5 | Token-aware chunking | ⬜ | | |
+| 4 | Document loader | 🔄 | `e6943af` | 54 tests; Important (error messages) queued for fix |
+| 5 | Token-aware chunking | 🔄 | | |
 | 6 | Embeddings | ⬜ | | downloads model |
 | 7 | Similarity and top-k | ⬜ | | |
 | 8 | Vector store | ⬜ | | |
@@ -58,6 +58,16 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   elements, so sidebar chrome would splice inline into paragraph text. Added to the
   dropped set (`c89edde`). `header`/`footer` deliberately left in place: in academic
   HTML they carry title and authors.
+
+## Queued fixes
+
+- **Task 4, Important** — `rag/loader.py` surfaces raw exceptions for a malformed
+  `data/metadata.json`, none of which name the offending file. Confirmed directly:
+  invalid JSON -> `JSONDecodeError`; missing top-level `documents` key ->
+  `KeyError: 'documents'`; a metadata entry missing `title` -> `KeyError: 'title'`.
+  This contradicts the loader's own design intent (fail strictly, but comprehensibly)
+  and it originates in the plan's reference code, not an implementer deviation.
+  Fix dispatched after Task 5 lands, to avoid two agents committing at once.
 
 ## Decisions and deviations
 
