@@ -1,4 +1,4 @@
-from scripts.html_text import html_to_text, normalize_whitespace
+from scripts.html_text import HTMLTextExtractor, html_to_text, normalize_whitespace
 
 
 def test_normalize_collapses_runs_of_spaces():
@@ -51,3 +51,50 @@ def test_br_becomes_a_single_newline_not_a_paragraph_break():
 
 def test_empty_input_yields_empty_string():
     assert html_to_text("") == ""
+
+
+def test_omitted_head_close_tag_does_not_lose_body():
+    # </head> is legal to omit in HTML5. A <body> start tag must implicitly
+    # close a still-open <head> so the rest of the document is not dropped.
+    html = "<html><head><title>T</title><body><p>Keep me</p></body></html>"
+    assert html_to_text(html) == "Keep me"
+
+
+def test_unclosed_math_recovers_rest_of_document():
+    # A never-closed <math> element used to leave the drop-counter stuck
+    # above zero, silently discarding everything after it. The recovery
+    # pass must surface the trailing text instead of losing it.
+    html = "<p>before</p><math><mi>x</mi><p>after</p>"
+    result = html_to_text(html)
+    assert "before" in result
+    assert "after" in result
+    assert result != "before"
+
+
+def test_stray_close_tag_with_no_open_is_ignored():
+    html = "<p>One</p></style><p>Two</p>"
+    assert html_to_text(html) == "One\n\nTwo"
+
+
+def test_self_closing_dropped_tag_does_not_swallow_rest():
+    html = "<p>a</p><math/><p>b</p>"
+    assert html_to_text(html) == "a\n\nb"
+
+
+def test_nav_and_aside_are_dropped():
+    html = "<nav>Menu</nav><p>Real content</p><aside>Sidebar</aside>"
+    assert html_to_text(html) == "Real content"
+
+
+def test_unclosed_attribute_reports_tags_left_open():
+    extractor = HTMLTextExtractor()
+    extractor.feed("<p>before</p><math><mi>x</mi>")
+    extractor.close()
+    assert extractor.unclosed == ["math"]
+
+
+def test_unclosed_attribute_is_empty_when_all_tags_close():
+    extractor = HTMLTextExtractor()
+    extractor.feed("<p>before</p><math><mi>x</mi></math>")
+    extractor.close()
+    assert extractor.unclosed == []
