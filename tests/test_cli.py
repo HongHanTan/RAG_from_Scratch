@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from rag.__main__ import format_trace, main
@@ -117,3 +119,111 @@ def test_no_llm_flag_skips_generation(tiny_corpus: Config, monkeypatch, capsys):
 def test_no_subcommand_prints_usage_and_fails():
     with pytest.raises(SystemExit):
         main([])
+
+
+# --- Windows console encoding (Finding 1) -----------------------------------
+#
+# The real bug only reproduces when stdout/stderr are backed by an actual
+# cp1252 console (see the subprocess repro in the task report). A capsys-based
+# test can't see that, because pytest swaps in its own stream. What we CAN
+# assert at unit level: main() attempts to reconfigure stdout/stderr to UTF-8
+# with errors="replace", and it tolerates a stream object that has no
+# `reconfigure` attribute at all (as some substitutes, including capsys's,
+# may not).
+
+
+class _RecordingStream:
+    """A stream that records reconfigure() calls and collects writes."""
+
+    def __init__(self):
+        self.reconfigure_calls = []
+        self.written = []
+
+    def reconfigure(self, **kwargs):
+        self.reconfigure_calls.append(kwargs)
+
+    def write(self, text):
+        self.written.append(text)
+
+    def flush(self):
+        pass
+
+
+class _NoReconfigureStream:
+    """A stream lacking `reconfigure`, like some substitutes (e.g. capsys)."""
+
+    def __init__(self):
+        self.written = []
+
+    def write(self, text):
+        self.written.append(text)
+
+    def flush(self):
+        pass
+
+
+def test_main_reconfigures_stdout_and_stderr_to_utf8_with_replace(
+    tiny_corpus: Config, monkeypatch
+):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+
+    fake_out = _RecordingStream()
+    fake_err = _RecordingStream()
+    monkeypatch.setattr(sys, "stdout", fake_out)
+    monkeypatch.setattr(sys, "stderr", fake_err)
+
+    assert main(["ask", "q", "--no-llm"], **_factories()) == 0
+    assert fake_out.reconfigure_calls == [{"encoding": "utf-8", "errors": "replace"}]
+    assert fake_err.reconfigure_calls == [{"encoding": "utf-8", "errors": "replace"}]
+
+
+def test_main_tolerates_stdout_without_reconfigure(tiny_corpus: Config, monkeypatch):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+
+    fake_out = _NoReconfigureStream()
+    fake_err = _NoReconfigureStream()
+    monkeypatch.setattr(sys, "stdout", fake_out)
+    monkeypatch.setattr(sys, "stderr", fake_err)
+
+    # Must not raise even though these streams have no `reconfigure` at all.
+    assert main(["ask", "q", "--no-llm"], **_factories()) == 0
+    assert any("retrieval only" in chunk for chunk in fake_out.written)
+
+
+def test_importing_main_module_does_not_touch_stdout(monkeypatch):
+    # Reconfiguration must happen inside main(), not at import time.
+    fake_out = _RecordingStream()
+    monkeypatch.setattr(sys, "stdout", fake_out)
+    import importlib
+
+    import rag.__main__ as main_module
+
+    importlib.reload(main_module)
+    assert fake_out.reconfigure_calls == []
+
+
+# --- negative --k (Finding 2) ------------------------------------------------
+
+
+def test_negative_k_exits_with_clear_message_and_no_traceback(
+    tiny_corpus: Config, monkeypatch, capsys
+):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+
+    assert main(["ask", "q", "--k", "-1"], **_factories()) == 1
+    err = capsys.readouterr().err
+    assert "--k" in err
+    assert "-1" in err
+    assert "Traceback" not in err
+
+
+def test_k_zero_still_behaves_sanely(tiny_corpus: Config, monkeypatch, capsys):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+
+    assert main(["ask", "q", "--k", "0"], **_factories()) == 0
+    err = capsys.readouterr().err
+    assert "Traceback" not in err

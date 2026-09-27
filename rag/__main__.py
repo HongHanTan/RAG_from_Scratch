@@ -93,12 +93,42 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _reconfigure_streams_for_utf8() -> None:
+    """Make stdout/stderr tolerate non-ASCII output on any console.
+
+    On Windows, stdout/stderr default to the console's legacy code page
+    (often cp1252) whenever they are not attached to a real console --
+    piped to a file, `| tee`, CI, etc. The corpus and generated answers can
+    contain characters outside that code page, which raises
+    UnicodeEncodeError deep inside print() and kills the CLI with a
+    traceback instead of an answer. Reconfiguring to UTF-8 with
+    errors="replace" means an unrepresentable character degrades to a
+    replacement glyph instead of crashing the process.
+
+    This is deliberately best-effort: some stream objects (tests substitute
+    their own) don't have `reconfigure` at all, and a console-configuration
+    problem must never prevent the CLI from answering.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+
 def main(
     argv: list[str] | None = None,
     embedder_factory=default_embedder,
     llm_factory=default_llm,
 ) -> int:
+    _reconfigure_streams_for_utf8()
+
     args = _build_parser().parse_args(argv)
+
+    if args.command == "ask" and args.k is not None and args.k < 0:
+        print(f"--k must not be negative, got {args.k}", file=sys.stderr)
+        return 1
 
     overrides = {}
     for field in ("chunk_tokens", "chunk_overlap"):
