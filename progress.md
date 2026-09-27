@@ -16,10 +16,10 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 | 6 | Embeddings | ✅ | `dfde3c1` | 9 fast + 4 slow; review clean, no findings |
 | 7 | Similarity and top-k | ✅ | `7fd1286` | 16 tests; review approved, 2 Minor |
 | 8 | Vector store | ✅ | `1937bf1` | 13 tests; 6-18 ms search over 5,116 chunks; review approved |
-| 9 | Trace | ✅ | `673a407` | 8 tests; JSON contract verified |
+| 9 | Trace | ✅ | `673a407` | 8 tests; review approved |
 | 10 | Gemini client (cache + retry) | ✅ | `31a1fba`, `920eea4` | 16 tests; live call + cache verified |
-| 11 | Prompt template and generation | 🔄 | | |
-| 12 | Pipeline | ⬜ | | |
+| 11 | Prompt template and generation | ✅ | `ff64a4f` | 16 tests; grounding verified against off-corpus question |
+| 12 | Pipeline | 🔄 | | |
 | 13 | CLI | ⬜ | | builds real index |
 | 14 | README + no-frameworks guard | ⬜ | | |
 | — | Final whole-branch review | ⬜ | | |
@@ -42,6 +42,12 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   re-deriving that slice could never fail. Caught by the Task 5 reviewer. Replaced with
   a real check (token-surface correspondence and monotonicity over 766k tokens), which
   found zero genuine offset errors.
+- **Task 9, Minor (informational)** — `total_ms` on an empty trace returns int `0`
+  rather than float `0.0`. Serialises identically and compares equal; noted only so
+  nobody is surprised by the type.
+- **Task 10, Minor (informational)** — backoff is `2.0 ** attempt` with no ceiling.
+  Bounded in practice by `max_retries=5` (max 8s), but would grow unbounded if that
+  default were raised much higher. A `min(2**attempt, cap)` would make it safe to tune.
 - **Task 8, Minor** — `str(data["chunks"])` pulls the JSON blob out of a 0-d NumPy
   array; `.item()` would be more idiomatic. Verified correct in practice: the reviewer
   round-tripped a 2 MB non-ASCII payload byte-for-byte with no truncation.
@@ -95,6 +101,14 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   HTML they carry title and authors.
 
 ## Decisions and deviations
+
+- **Grounding verified, not assumed (Task 11).** Beyond the happy path, the system was
+  asked "What is the capital of Australia and what is its population?" — a fact the
+  model certainly knows. It answered "The provided context does not contain the answer
+  to the question." Empty retrieval renders as `(no documents retrieved)` and yields a
+  matching refusal. Chunks containing `{}` or `{'k': 1}` pass through the template
+  without breaking or injecting. These three together are what make the answers
+  trustworthy rather than merely fluent.
 
 - **API key works despite its unusual `AQ.` prefix.** Google AI Studio keys normally
   start with `AIza`; this one authenticated fine and lists 61 models. Stored in `.env`,
