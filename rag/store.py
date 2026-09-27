@@ -15,20 +15,27 @@ so normalising it per call is free and still happens in `search`.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import numpy as np
 
+from rag.atomic import write_atomic
 from rag.chunking import Chunk, RetrievedChunk
 from rag.embedding import l2_normalize
 from rag.similarity import top_k
+
+
+def _with_npz_suffix(path: Path) -> Path:
+    """np.savez_compressed appends .npz; make save and load agree about that."""
+    return path if path.suffix == ".npz" else path.with_name(f"{path.name}.npz")
 
 
 @dataclass
 class VectorStore:
     vectors: np.ndarray       # (n_chunks, dim) float32, L2-normalised
     chunks: list[Chunk]
+    meta: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.vectors = np.asarray(self.vectors, dtype=np.float32)
@@ -67,13 +74,41 @@ class VectorStore:
             for row_i, row_s in zip(indices, values)
         ]
 
-    def save(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
+    def save(self, path: Path, meta: dict | None = None) -> None:
+        """Persist the index, recording how it was built.
+
+        `meta` should carry the embedding model and chunking parameters, so a
+        later load can refuse an index built under a different configuration.
+        Without it, an index built at one chunk size and queried at another
+        returns plausible nonsense: the dimensions still match, so nothing
+        errors.
+        """
+        path = _with_npz_suffix(path)
         payload = json.dumps([asdict(c) for c in self.chunks], ensure_ascii=False)
-        np.savez_compressed(path, vectors=self.vectors, chunks=np.array(payload))
+        meta_payload = json.dumps(meta or {}, sort_keys=True)
+
+        def _write(target: Path) -> None:
+            # Write through an open handle: np.savez_compressed appends .npz to
+            # a *path* that lacks it, which would leave the temporary somewhere
+            # the rename cannot find it.
+            with open(target, "wb") as handle:
+                np.savez_compressed(
+                    handle,
+                    vectors=self.vectors,
+                    chunks=np.array(payload),
+                    meta=np.array(meta_payload),
+                )
+
+        write_atomic(path, _write)
 
     @classmethod
-    def load(cls, path: Path) -> "VectorStore":
+    def load(cls, path: Path, expect_meta: dict | None = None) -> "VectorStore":
+        """Load an index, optionally checking it was built as expected.
+
+        An index written before provenance existed has no meta; that is
+        tolerated rather than treated as a mismatch, so old indexes still load.
+        """
+        path = _with_npz_suffix(path)
         if not path.is_file():
             raise FileNotFoundError(
                 f"index not found: {path} — run `python -m rag index` first"
@@ -81,4 +116,24 @@ class VectorStore:
         with np.load(path, allow_pickle=False) as data:
             vectors = data["vectors"].astype(np.float32)
             chunks = [Chunk(**record) for record in json.loads(str(data["chunks"]))]
-        return cls(vectors=vectors, chunks=chunks)
+            meta = json.loads(str(data["meta"])) if "meta" in data.files else {}
+
+        if expect_meta and meta:
+            differing = {
+                key: (meta[key], value)
+                for key, value in expect_meta.items()
+                if key in meta and meta[key] != value
+            }
+            if differing:
+                detail = ", ".join(
+                    f"{k}: index has {found!r}, config wants {wanted!r}"
+                    for k, (found, wanted) in sorted(differing.items())
+                )
+                raise ValueError(
+                    f"index at {path} was built with a different configuration "
+                    f"({detail}) — rebuild it with `python -m rag index`"
+                )
+
+        store = cls(vectors=vectors, chunks=chunks)
+        store.meta = meta
+        return store

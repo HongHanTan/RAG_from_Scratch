@@ -107,3 +107,21 @@ def test_ask_gives_the_llm_the_retrieved_context(tiny_corpus: Config):
     llm = FakeLLM()
     trace = ask("q", store, FakeEmbedder(), llm, tiny_corpus, k=1)
     assert trace.retrieved[0].chunk.text in llm.prompts[0]
+
+
+def test_build_index_records_the_config_it_was_built_with(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder())
+    assert store.meta["chunk_tokens"] == tiny_corpus.chunk_tokens
+    assert store.meta["chunk_overlap"] == tiny_corpus.chunk_overlap
+    assert store.meta["embedding_model"] == tiny_corpus.embedding_model
+
+
+def test_load_index_refuses_an_index_built_with_different_chunking(
+    tiny_corpus: Config,
+):
+    from dataclasses import replace
+
+    build_index(tiny_corpus, FakeEmbedder())
+    changed = replace(tiny_corpus, chunk_tokens=4, chunk_overlap=1)
+    with pytest.raises(ValueError, match="chunk_tokens"):
+        load_index(changed)

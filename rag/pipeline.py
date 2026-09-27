@@ -22,12 +22,33 @@ def build_index(config: Config, embedder) -> VectorStore:
     )
     vectors = embedder.encode([chunk.text for chunk in chunks])
     store = VectorStore(vectors=vectors, chunks=chunks)
-    store.save(config.index_path)
+    store.meta = _index_meta(config, store.dim)
+    store.save(config.index_path, meta=store.meta)
     return store
 
 
+def _index_meta(config: Config, dim: int) -> dict:
+    """What an index must agree with to be safely reused.
+
+    Chunk size and overlap change which text each vector represents, and the
+    embedding model changes what the vectors mean. Reusing an index across any
+    of those returns plausible nonsense rather than an error, because the
+    dimensions still line up.
+    """
+    return {
+        "embedding_model": config.embedding_model,
+        "chunk_tokens": config.chunk_tokens,
+        "chunk_overlap": config.chunk_overlap,
+        "dim": dim,
+    }
+
+
 def load_index(config: Config) -> VectorStore:
-    return VectorStore.load(config.index_path)
+    # dim is unknown until the file is read, and an index whose dim differs
+    # already fails cleanly at search time, so it is left out of the check.
+    expected = _index_meta(config, dim=None)
+    expected.pop("dim")
+    return VectorStore.load(config.index_path, expect_meta=expected)
 
 
 def ask(

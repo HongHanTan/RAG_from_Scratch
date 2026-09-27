@@ -1,3 +1,6 @@
+import json
+from dataclasses import asdict
+
 import numpy as np
 import pytest
 
@@ -128,3 +131,78 @@ def test_vectors_are_unit_length_after_load(tmp_path):
     loaded = VectorStore.load(path)
     norms = np.linalg.norm(loaded.vectors, axis=1)
     np.testing.assert_allclose(norms, [1.0, 1.0], atol=1e-6)
+
+
+# --- provenance, atomic writes, suffix handling ------------------------------
+
+
+def _meta():
+    return {
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "chunk_tokens": 200,
+        "chunk_overlap": 50,
+        "dim": 3,
+    }
+
+
+def test_save_records_provenance_and_load_returns_it(tmp_path):
+    path = tmp_path / "index.npz"
+    _store(3).save(path, meta=_meta())
+    assert VectorStore.load(path).meta == _meta()
+
+
+def test_load_rejects_an_index_built_with_a_different_config(tmp_path):
+    path = tmp_path / "index.npz"
+    _store(3).save(path, meta=_meta())
+    expected = dict(_meta(), chunk_tokens=400)
+    with pytest.raises(ValueError, match="chunk_tokens"):
+        VectorStore.load(path, expect_meta=expected)
+
+
+def test_load_accepts_a_matching_config(tmp_path):
+    path = tmp_path / "index.npz"
+    _store(3).save(path, meta=_meta())
+    assert len(VectorStore.load(path, expect_meta=_meta())) == 3
+
+
+def test_load_tolerates_an_index_saved_without_meta(tmp_path):
+    # Indexes written before provenance existed must still load.
+    path = tmp_path / "index.npz"
+    store = _store(3)
+    np.savez_compressed(
+        path,
+        vectors=store.vectors,
+        chunks=np.array(json.dumps([asdict(c) for c in store.chunks])),
+    )
+    loaded = VectorStore.load(path, expect_meta=_meta())
+    assert len(loaded) == 3
+    assert loaded.meta == {}
+
+
+def test_save_and_load_agree_when_the_suffix_is_omitted(tmp_path):
+    # save(Path("index")) writes index.npz; load(Path("index")) must find it
+    # rather than telling the user to run the command they just ran.
+    base = tmp_path / "index"
+    _store(2).save(base)
+    assert len(VectorStore.load(base)) == 2
+
+
+def test_save_leaves_no_temporary_file_behind(tmp_path):
+    path = tmp_path / "index.npz"
+    _store(2).save(path)
+    assert [p.name for p in tmp_path.iterdir()] == ["index.npz"]
+
+
+def test_a_failed_save_does_not_destroy_the_existing_index(tmp_path):
+    path = tmp_path / "index.npz"
+    _store(3).save(path)
+    good = path.read_bytes()
+
+    class Unserialisable:
+        pass
+
+    store = _store(2)
+    store.chunks = [Unserialisable()]  # json.dumps will raise mid-save
+    with pytest.raises(Exception):
+        store.save(path)
+    assert path.read_bytes() == good
