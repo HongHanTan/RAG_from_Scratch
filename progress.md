@@ -20,7 +20,7 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 | 10 | Gemini client (cache + retry) | ✅ | `31a1fba`, `920eea4` | 16 tests; live call + cache verified |
 | 11 | Prompt template and generation | ✅ | `ff64a4f` | 16 tests; grounding verified against off-corpus question |
 | 12 | Pipeline | ✅ | `a093547` | 16 tests; full index built, end-to-end ask() works |
-| 13 | CLI | ✅ | `bf41261` | 13 tests; 187 total; all 4 demo commands verified |
+| 13 | CLI | 🔄 | `bf41261` | 13 tests; Important (Windows encoding crash) queued |
 | 14 | README + no-frameworks guard | 🔄 | | plus cache-visibility fix |
 | — | Final whole-branch review | ⬜ | | |
 
@@ -119,6 +119,23 @@ in a few lines and is the single highest-value cleanup left in Phase 1.
   elements, so sidebar chrome would splice inline into paragraph text. Added to the
   dropped set (`c89edde`). `header`/`footer` deliberately left in place: in academic
   HTML they carry title and authors.
+
+## Queued fix (dispatch after Task 14)
+
+- **Task 13, IMPORTANT — CLI crashes on Windows when output is redirected.**
+  `print(format_trace(...))` in `rag/__main__.py` writes to a cp1252 stdout whenever
+  stdout is not a real console (`> file`, `| tee`, CI). The corpus contains 12,335
+  characters above U+2000, of which `✓` (248 occurrences) and `►` are outside cp1252,
+  so any retrieval touching those chunks raises `UnicodeEncodeError` and prints a raw
+  traceback instead of the answer. Reproduced directly.
+  **This was masked by my own verification method** — every manual check I ran set
+  `PYTHONIOENCODING=utf-8`, so the defect never surfaced until a reviewer tested
+  without it. Worth remembering: an environment variable set for convenience can hide
+  exactly the class of bug the check was meant to find.
+  Fix: reconfigure stdout/stderr to UTF-8 with `errors="replace"` at CLI entry,
+  guarded by `hasattr`, plus a regression test.
+- **Task 13, Minor** — `--k -1` reaches `top_k`'s `ValueError` uncaught and prints a
+  traceback; `main()` catches only `FileNotFoundError` and `LLMError`. `--k 0` is fine.
 
 ## Decisions and deviations
 
