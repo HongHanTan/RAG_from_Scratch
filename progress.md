@@ -8,7 +8,7 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 
 | # | Task | Status | Commits | Notes |
 |---|------|--------|---------|-------|
-| 1 | Scaffolding, Config, test fixtures | ⬜ | | |
+| 1 | Scaffolding, Config, test fixtures | ✅ | `1ae1bad` | 9 tests pass; review clean |
 | 2 | HTML text extraction | ⬜ | | |
 | 3 | Corpus fetch script + fetch corpus | ⬜ | | needs network |
 | 4 | Document loader | ⬜ | | |
