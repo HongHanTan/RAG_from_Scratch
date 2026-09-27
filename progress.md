@@ -9,8 +9,8 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 | # | Task | Status | Commits | Notes |
 |---|------|--------|---------|-------|
 | 1 | Scaffolding, Config, test fixtures | ✅ | `1ae1bad` | 9 tests pass; review clean |
-| 2 | HTML text extraction | ✅ | `77f3c41`, `c89edde` | review found a Critical + Important; both fixed |
-| 3 | Corpus fetch script + fetch corpus | ⬜ | | needs network |
+| 2 | HTML text extraction | ✅ | `77f3c41`..`b497946` | 31 tests pass; 3 review rounds, all findings fixed |
+| 3 | Corpus fetch script + fetch corpus | 🔄 | | needs network |
 | 4 | Document loader | ⬜ | | |
 | 5 | Token-aware chunking | ⬜ | | |
 | 6 | Embeddings | ⬜ | | downloads model |
@@ -36,6 +36,11 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   document. Confirmed empirically: an omitted `</head>` returned an empty string.
   Would have put truncated papers into the committed corpus, invisibly. Fixed with
   stack-based drop tracking plus a recovery re-parse (`c89edde`).
+- **Task 2, Important (round 2)** — the recovery re-parse demoted an unclosed tag by
+  *name*, document-wide, so one malformed element exposed every well-formed element of
+  the same name. Confirmed: `<script>A</script><p>keep</p><script>B` leaked the
+  JavaScript `A`; the `<style>` variant leaked raw CSS into the text. Fixed by
+  demoting per *occurrence* rather than per name (`b497946`).
 - **Task 2, Important** — `nav` and `aside` were neither dropped nor treated as block
   elements, so sidebar chrome would splice inline into paragraph text. Added to the
   dropped set (`c89edde`). `header`/`footer` deliberately left in place: in academic
