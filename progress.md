@@ -11,11 +11,11 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 | 1 | Scaffolding, Config, test fixtures | ✅ | `1ae1bad` | 9 tests pass; review clean |
 | 2 | HTML text extraction | ✅ | `77f3c41`..`b497946` | 31 tests pass; 3 review rounds, all findings fixed |
 | 3 | Corpus fetch script + fetch corpus | ✅ | `cdd5aee`, `ae41c4f` | 38 docs, all titles verified; 46 tests |
-| 4 | Document loader | ✅ | `e6943af`, `e138637` | 13 tests; Important fixed (actionable metadata errors) |
+| 4 | Document loader | ✅ | `e6943af`, `e138637`, `f209fad` | 16 tests; all malformed-metadata shapes now actionable |
 | 5 | Token-aware chunking | ✅ | `f72b505` | 18 tests; 5,116 chunks, offsets independently verified |
-| 6 | Embeddings | ✅ | `dfde3c1` | 9 fast + 4 slow tests; real retrieval verified |
-| 7 | Similarity and top-k | 🔄 | | |
-| 8 | Vector store | ⬜ | | |
+| 6 | Embeddings | ✅ | `dfde3c1` | 9 fast + 4 slow; review clean, no findings |
+| 7 | Similarity and top-k | ✅ | `7fd1286` | 16 tests; 105 total |
+| 8 | Vector store | 🔄 | | |
 | 9 | Trace | ⬜ | | |
 | 10 | Gemini client (cache + retry) | ⬜ | | needs API key to verify model id |
 | 11 | Prompt template and generation | ⬜ | | |
@@ -72,22 +72,15 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   malformed `data/metadata.json`, naming neither the file nor the bad document. Against
   the loader's own design intent of failing strictly but comprehensibly. Originated in
   the plan's reference code. Fixed with actionable `ValueError`s (`e138637`).
+- **Task 4, Important (round 2)** — a metadata *entry* whose value was not a mapping
+  escaped the round-1 fix, since `except KeyError` does not catch `TypeError`. All three
+  shapes (string, null, list) raised raw `TypeError` naming neither file nor document.
+  Fixed with an `isinstance` guard (`f209fad`); verified all three now raise `ValueError`
+  naming both. The loader thread is closed: every malformed-metadata shape is actionable.
 - **Task 2, Important** — `nav` and `aside` were neither dropped nor treated as block
   elements, so sidebar chrome would splice inline into paragraph text. Added to the
   dropped set (`c89edde`). `header`/`footer` deliberately left in place: in academic
   HTML they carry title and authors.
-
-## Queued fixes (batched, dispatched after Task 6)
-
-- **Task 4, Important (round 2)** — a metadata *entry* whose value is not a mapping
-  still escapes the new error handling, because `except KeyError` does not catch the
-  resulting `TypeError`. Confirmed for three shapes, none of which names the file or
-  the document:
-  `{"documents": {"alpha": "oops"}}` -> `TypeError: string indices must be integers`;
-  `{"documents": {"alpha": null}}`   -> `TypeError: 'NoneType' object is not subscriptable`;
-  `{"documents": {"alpha": []}}`     -> `TypeError: list indices must be integers`.
-  Reintroduces exactly the non-actionable failure the `e138637` fix existed to remove.
-  One `isinstance(record, dict)` check plus one test closes the class.
 
 ## Decisions and deviations
 
