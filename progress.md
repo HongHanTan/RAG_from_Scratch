@@ -11,9 +11,9 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 | 1 | Scaffolding, Config, test fixtures | ✅ | `1ae1bad` | 9 tests pass; review clean |
 | 2 | HTML text extraction | ✅ | `77f3c41`..`b497946` | 31 tests pass; 3 review rounds, all findings fixed |
 | 3 | Corpus fetch script + fetch corpus | ✅ | `cdd5aee`, `ae41c4f` | 38 docs, all titles verified; 46 tests |
-| 4 | Document loader | 🔄 | `e6943af` | 54 tests; Important (error messages) queued for fix |
-| 5 | Token-aware chunking | 🔄 | | |
-| 6 | Embeddings | ⬜ | | downloads model |
+| 4 | Document loader | ✅ | `e6943af`, `e138637` | 13 tests; Important fixed (actionable metadata errors) |
+| 5 | Token-aware chunking | ✅ | `f72b505` | 18 tests; 5,116 chunks, offsets independently verified |
+| 6 | Embeddings | 🔄 | | model already cached |
 | 7 | Similarity and top-k | ⬜ | | |
 | 8 | Vector store | ⬜ | | |
 | 9 | Trace | ⬜ | | |
@@ -28,6 +28,20 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
 
 - **Task 1, Minor** — `Config` implementation is a verbatim transcription of the plan's
   reference code. Acceptable (the plan supplied working code), noted for the record.
+- **Task 5, Minor (downgraded from Important, with evidence)** — the reviewer flagged
+  that `chunk_document` trusts every tokenizer offset, so a zero-width or `(0,0)` offset
+  would silently corrupt `char_start`/`char_end`. Sound reasoning, but measured against
+  the real corpus it does not occur: 0 zero-width offsets, 0 `(0,0)` offsets and 0
+  non-monotonic offsets across 766,278 tokens. Left unguarded; worth a cheap assertion
+  if Phase 4 adds documents or the embedding model changes.
+- **Task 5, Minor** — `window_bounds` duplicates the size/overlap validation in
+  `Config.__post_init__`. Deliberate (the function is meant to be self-contained and
+  exhaustively testable) but the two could drift.
+- **Note on verification method** — the controller's initial "0 offset mismatches" check
+  was tautological: `chunk.text` is assigned as `doc.text[char_start:char_end]`, so
+  re-deriving that slice could never fail. Caught by the Task 5 reviewer. Replaced with
+  a real check (token-surface correspondence and monotonicity over 766k tokens), which
+  found zero genuine offset errors.
 - **Task 3, Minor** — `save_metadata` in `scripts/fetch_corpus.py` uses a single
   `write_text` (truncate-then-write), not a temp-file + `Path.replace` swap. A kill
   inside that window leaves `data/metadata.json` truncated, which makes `json.loads`
@@ -54,20 +68,14 @@ Status key: ⬜ not started · 🔄 in progress · ✅ complete
   loader treats as a hard error. Proven real by a test that failed against the original
   code. Fixed with incremental per-document writes (`ae41c4f`). Same round added 6 tests
   for `main()`, which previously had none.
+- **Task 4, Important** — `rag/loader.py` raised raw `JSONDecodeError`/`KeyError` for a
+  malformed `data/metadata.json`, naming neither the file nor the bad document. Against
+  the loader's own design intent of failing strictly but comprehensibly. Originated in
+  the plan's reference code. Fixed with actionable `ValueError`s (`e138637`).
 - **Task 2, Important** — `nav` and `aside` were neither dropped nor treated as block
   elements, so sidebar chrome would splice inline into paragraph text. Added to the
   dropped set (`c89edde`). `header`/`footer` deliberately left in place: in academic
   HTML they carry title and authors.
-
-## Queued fixes
-
-- **Task 4, Important** — `rag/loader.py` surfaces raw exceptions for a malformed
-  `data/metadata.json`, none of which name the offending file. Confirmed directly:
-  invalid JSON -> `JSONDecodeError`; missing top-level `documents` key ->
-  `KeyError: 'documents'`; a metadata entry missing `title` -> `KeyError: 'title'`.
-  This contradicts the loader's own design intent (fail strictly, but comprehensibly)
-  and it originates in the plan's reference code, not an implementer deviation.
-  Fix dispatched after Task 5 lands, to avoid two agents committing at once.
 
 ## Decisions and deviations
 
