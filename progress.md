@@ -56,7 +56,24 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-2-query-translation.md](docs/supe
 | 7 | HyDE | ✅ | `8d41135`, `4c19628` | 321 tests; incl. parser fixes |
 | 8 | Decomposition (recursive + independent) | ✅ | `2c90cff` | 334 tests; nesting verified |
 | 9 | CLI `--strategy`, rendering, README | ✅ | `0ec17a5`, `dbd3eeb`, `1e4ba4f` | 352 tests |
-| — | Final whole-branch review | 🔄 | | |
+| — | Final whole-branch review | ✅ | `e70aac2`..`795b521` | 3 Important + all Minors fixed; 368 tests |
+
+### Phase 2 final review — resolved
+
+- **IMPORTANT — HyDE's safety net was decorative.** Its docstring claimed searching the
+  question alongside the hypothetical document meant a bad hypothetical degrades rather
+  than replaces the result. Measured: question scores 0.40–0.33, hypothetical 0.79–0.74,
+  and `merge_best_score` took **0/5** from the question. `include_question=True` did
+  nothing. Now fuses by rank; **2/5** final chunks come from question-only hits.
+  The irony worth keeping: `rag_fusion.py`'s own docstring explains that lists from
+  different queries are not on a shared scale, and HyDE is where that is most true.
+- **IMPORTANT — a missing API key silently made every strategy `direct`, exit 0.**
+  Confirmed by moving `.env` aside. Phase 3's benchmark would have measured this as
+  "no technique helps". Now exits 1 for any non-direct strategy; `direct` still
+  degrades usefully.
+- **IMPORTANT — decomposition's `trace.queries` listed the original question**, which
+  is never searched. Broke the invariant that `queries` is exactly what was embedded.
+  Now lists only the sub-questions.
 
 ### Notes for the Phase 3 plan
 
