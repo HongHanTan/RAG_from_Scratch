@@ -60,7 +60,6 @@ from pathlib import Path
 from evaluation.gold import GoldQuestion, load_gold
 from evaluation.metrics import doc_precision_at_k, ndcg_at_k, recall_at_k, reciprocal_rank
 from evaluation.spans import relevant_chunk_ids
-from rag.chunking import Chunk, chunk_documents
 from rag.config import Config
 from rag.embedding import Embedder
 from rag.llm import GeminiLLM
@@ -127,7 +126,6 @@ def check_not_degraded(trace: Trace) -> None:
 def score_strategy(
     strategy: str,
     gold: list[GoldQuestion],
-    chunks: list[Chunk],
     store: VectorStore,
     embedder,
     llm,
@@ -135,6 +133,17 @@ def score_strategy(
     k: int,
 ) -> StrategyScore:
     """Run one strategy over every gold question and average the metrics.
+
+    Gold spans are resolved against `store.chunks` -- the exact chunks that
+    were embedded into the index and searched -- rather than a freshly
+    recomputed chunk list. Chunk ids are positional (`f"{doc_id}:{index}"`),
+    so if the corpus or the text extractor ever changed after the index was
+    built, a separately recomputed chunk list would share ids with the
+    index's chunks while covering different text, and scores would compare
+    two disagreeing chunk lists under the same ids with no error anywhere.
+    Scoring against `store.chunks` makes that mismatch structurally
+    impossible: there is only one chunk list, and it is the one that was
+    actually searched.
 
     Retrieval runs once per question, at depth `k`. DocPrec@5 is read off the
     same ranked list's first 5 entries rather than issuing a second call at
@@ -190,7 +199,7 @@ def score_strategy(
     for question, (trace, calls) in zip(gold, traced):
         retrieved_ids = [r.chunk.chunk_id for r in trace.retrieved]
         retrieved_doc_ids = [r.chunk.doc_id for r in trace.retrieved]
-        relevant = relevant_chunk_ids(question, chunks)
+        relevant = relevant_chunk_ids(question, store.chunks)
         recalls.append(recall_at_k(retrieved_ids, relevant, k))
         rrs.append(reciprocal_rank(retrieved_ids, relevant))
         ndcgs.append(ndcg_at_k(retrieved_ids, relevant, k))
@@ -266,9 +275,6 @@ def main(argv: list[str] | None = None) -> int:
 
     embedder = Embedder(config.embedding_model, max_length=config.max_seq_tokens)
     documents = load_documents(config.corpus_dir, config.metadata_path)
-    chunks = chunk_documents(
-        documents, embedder.tokenizer, config.chunk_tokens, config.chunk_overlap
-    )
     store = load_index(config)
     gold = load_gold(args.gold, documents)
     llm = GeminiLLM(
@@ -280,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
     for strategy in selected:
         print(f"running {strategy}...", flush=True)
         scores.append(
-            score_strategy(strategy, gold, chunks, store, embedder, llm, config, args.k)
+            score_strategy(strategy, gold, store, embedder, llm, config, args.k)
         )
 
     table = format_table(scores, k=args.k)

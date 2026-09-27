@@ -1,3 +1,6 @@
+import math
+
+import numpy as np
 import pytest
 
 from evaluation.benchmark import StrategyScore, format_table
@@ -155,3 +158,119 @@ def test_counting_llm_counts_a_strategy_that_does_call_the_llm(tiny_corpus: Conf
         generate=False,
     )
     assert counting_llm.logical_call_count == 1
+
+
+# --- score_strategy end to end -------------------------------------------------
+#
+# Nothing previously exercised score_strategy itself -- the function that
+# produces every published number. Swapping retrieved_doc_ids for
+# retrieved_ids inside it, for instance, would still pass the rest of the
+# suite. This builds a small, fully deterministic world (fixed embeddings, an
+# in-memory store, a scripted LLM rewrite) so every StrategyScore field can be
+# checked against a value computed by hand from the known retrieval order.
+
+
+class _FixedVectorEmbedder:
+    """Maps known strings to known vectors. No randomness, no model."""
+
+    def __init__(self, vectors: dict[str, list[float]]) -> None:
+        self._vectors = vectors
+
+    def encode(self, texts: list[str], batch_size: int = 32) -> np.ndarray:
+        return np.array([self._vectors[t] for t in texts], dtype=np.float32)
+
+
+def _hand_scored_world():
+    """Three orthogonal chunks, two questions, one scripted rewrite.
+
+    doc1 has two chunks (doc1:0, doc1:1); doc2 has one (doc2:0). Query and
+    rewrite vectors are axis-aligned unit vectors, so cosine similarity is
+    either exactly 1.0 or exactly 0.0 and the merged order is fully
+    determined by `merge_best_score`'s documented tie-break (score, then
+    chunk_id).
+    """
+    from evaluation.gold import GoldQuestion
+    from rag.chunking import Chunk
+    from rag.store import VectorStore
+
+    chunks = [
+        Chunk("doc1:0", "doc1", 0, "a", 0, 1, 0, 10),
+        Chunk("doc1:1", "doc1", 1, "b", 0, 1, 10, 20),
+        Chunk("doc2:0", "doc2", 0, "c", 0, 1, 0, 10),
+    ]
+    vectors = np.array(
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=np.float32
+    )
+    store = VectorStore(vectors=vectors, chunks=chunks)
+
+    embedder = _FixedVectorEmbedder(
+        {
+            "q1": [1.0, 0.0, 0.0],
+            "q2": [0.0, 0.0, 1.0],
+            "rewrite one": [0.0, 1.0, 0.0],
+        }
+    )
+    llm = FakeLLM("1. rewrite one")
+
+    gold = [
+        GoldQuestion(
+            id="g1", question="q1", doc_id="doc1", quotes=("x",), why="w",
+            spans=((2, 5),),
+        ),
+        GoldQuestion(
+            id="g2", question="q2", doc_id="doc2", quotes=("y",), why="w",
+            spans=((2, 5),),
+        ),
+    ]
+    config = Config(top_k=3, retrieval_depth=3)
+    return gold, store, embedder, llm, config
+
+
+def test_score_strategy_matches_metrics_computed_by_hand():
+    from evaluation.benchmark import score_strategy
+
+    gold, store, embedder, llm, config = _hand_scored_world()
+    score = score_strategy("multi-query", gold, store, embedder, llm, config, k=3)
+
+    # q1's merged order is [doc1:0, doc1:1, doc2:0]; the gold span sits in
+    # doc1:0 only, so the first hit is at rank 1.
+    # q2's merged order is [doc1:1, doc2:0, doc1:0]; the gold span sits in
+    # doc2:0, so the first hit is at rank 2.
+    assert score.strategy == "multi-query"
+    assert score.questions == 2
+    assert score.recall_at_k == pytest.approx(1.0)
+    assert score.mrr == pytest.approx((1.0 + 0.5) / 2)
+    assert score.ndcg_at_k == pytest.approx((1.0 + 1 / math.log2(3)) / 2)
+    assert score.doc_precision == pytest.approx((2 / 3 + 1 / 3) / 2)
+    # multi-query makes exactly one rewrite call per question.
+    assert score.llm_calls == pytest.approx(1.0)
+    assert score.mean_ms_warm >= 0.0
+
+
+def test_score_strategy_resolves_gold_spans_against_the_stores_own_chunks():
+    # If the benchmark ever went back to resolving spans against a separately
+    # recomputed chunk list, this world would still "work" (ids and offsets
+    # happen to agree here) -- so this test pins the *source* of the chunks
+    # used for scoring, not just the numbers that come out. relevant_chunk_ids
+    # must be called with store.chunks, not any other chunk list, so a chunk
+    # that exists only in the store is still resolvable.
+    import evaluation.benchmark as benchmark_module
+
+    gold, store, embedder, llm, config = _hand_scored_world()
+    seen_chunk_lists = []
+    original = benchmark_module.relevant_chunk_ids
+
+    def spy(question, chunks):
+        seen_chunk_lists.append(chunks)
+        return original(question, chunks)
+
+    benchmark_module.relevant_chunk_ids = spy
+    try:
+        benchmark_module.score_strategy(
+            "multi-query", gold, store, embedder, llm, config, k=3
+        )
+    finally:
+        benchmark_module.relevant_chunk_ids = original
+
+    assert seen_chunk_lists
+    assert all(chunks is store.chunks for chunks in seen_chunk_lists)
