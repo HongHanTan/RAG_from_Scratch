@@ -161,7 +161,7 @@ Plan: [docs/superpowers/plans/2026-09-27-phase-3-evaluation-harness.md](docs/sup
 | 4 | Recall@k, MRR, nDCG | ✅ | `9ce76fa`, `40a22ea` | + doc-precision |
 | 5 | Ten gold questions | ✅ | `b8f57be` | 10 questions, 17 quotes, 10 docs |
 | 6 | Benchmark runner, CLI, README | ✅ | `c58970e`..`03e055f` | 439 tests |
-| — | Final whole-branch review | 🔄 | | |
+| — | Final whole-branch review | ✅ | `1aa1c3c`..`0e1da3a` | 3 Important + minors fixed; 450 tests |
 
 ### Phase 3 carried items
 
@@ -225,3 +225,27 @@ and after. What changed is the cost story, and one claim that rested on it: the
 real premium is 3.4 LLM calls per question versus 0-1, and 110 ms warm versus 42 ms.
 Still the most expensive strategy, for the smallest recall gain, but by 2.6x rather
 than three orders of magnitude.
+
+### Phase 3 final review — resolved
+
+Verdict was "merge after fixes"; the reviewer hunted for a third scoring defect and
+found none, verifying each suspect empirically rather than by argument.
+
+- **IMPORTANT — `Mean ms (warm)` excluded the merging the README said it measured.**
+  Confirmed: a rag-fusion run recorded only `translate, embed, search`. Fixed by
+  timing the merge in all four fusing strategies, which makes the claim true rather
+  than deleting it. Decomposition's merge already sits inside its `decompose` stage.
+- **IMPORTANT — the benchmark scored a disk index against freshly recomputed chunks.**
+  Chunk ids are positional, so a corpus change after indexing would have produced
+  colliding ids over different text and a silently wrong table. Clean today; fixed by
+  scoring against `store.chunks`, which also removed duplicated work.
+- **IMPORTANT — `score_strategy` had no test**, despite producing every published
+  number. Now covered end to end against hand-computed values.
+- **README honesty.** "Bit-identical across runs" was cache determinism, not method
+  determinism — `.cache/` is gitignored, so a clean clone re-samples the model and
+  gets different numbers. The table is one draw over 10 questions with no variance
+  estimate, and the README now says so. Also corrected a false claim in the Phase 3
+  plan that multi-quote had created Recall@5 headroom; it did not (0.050 before and
+  after) — what created headroom was measuring at k=20 and adding the document metric.
+
+All four score columns are byte-identical before and after every fix.

@@ -214,7 +214,10 @@ set (`evaluation/gold.json`), using `python -m evaluation.benchmark`:
 Ran repeatedly (the full sweep, plus `multi-query` and `rag-fusion` run alone
 in both orders — see below); every metric column, `LLM calls` included, was
 bit-identical across runs. `Mean ms (warm)` moves a little run to run, as
-wall-clock numbers do, but no longer with strategy order.
+wall-clock numbers do, but no longer with strategy order. Read it as an order
+of magnitude, not a measurement: fusing a handful of short lists costs well
+under a millisecond, which is below this machine's run-to-run noise, so the
+small gaps between the middle four strategies are not meaningful.
 
 **That determinism is the LLM cache's, not the method's.** `.cache/` (the
 on-disk LLM cache these repeat runs share) is gitignored — it is not part of
