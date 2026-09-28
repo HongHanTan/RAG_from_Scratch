@@ -128,3 +128,89 @@ def test_a_filter_matching_nothing_gives_an_all_false_mask():
 
 def test_mask_length_matches_the_chunk_count():
     assert len(compile_mask(MetadataFilter(), _chunks(), _doc_meta())) == 4
+
+
+# --- build_filter -------------------------------------------------------
+
+from rag.llm import LLMError
+from rag.query_construction import build_filter
+from rag.trace import Trace
+
+TOPICS = ("retrieval-models", "rag-systems", "foundations")
+
+
+class ReplyLLM:
+    def __init__(self, reply):
+        self.reply = reply
+        self.prompts = []
+
+    def generate(self, prompt):
+        self.prompts.append(prompt)
+        return self.reply
+
+    def structured(self, prompt, schema):
+        from rag.llm import GeminiLLM
+
+        return GeminiLLM.structured(self, prompt, schema)
+
+
+def test_build_filter_extracts_a_date_constraint():
+    llm = ReplyLLM('{"published_before": "2024-01-01"}')
+    f = build_filter("anything published before 2024?", llm, TOPICS, Trace(question="q"))
+    assert f.published_before == "2024-01-01"
+
+
+def test_build_filter_extracts_a_topic():
+    llm = ReplyLLM('{"topics": ["rag-systems"]}')
+    f = build_filter("what do the RAG papers say?", llm, TOPICS, Trace(question="q"))
+    assert f.topics == ("rag-systems",)
+
+
+def test_build_filter_drops_a_topic_that_does_not_exist():
+    # A hallucinated collection would mask everything out and return nothing.
+    llm = ReplyLLM('{"topics": ["rag-systems", "invented-topic"]}')
+    f = build_filter("q", llm, TOPICS, Trace(question="q"))
+    assert f.topics == ("rag-systems",)
+
+
+def test_build_filter_returns_an_empty_filter_for_an_unconstrained_question():
+    llm = ReplyLLM("{}")
+    assert build_filter("how does ColBERT work?", llm, TOPICS, Trace(question="q")).is_empty()
+
+
+def test_build_filter_records_the_filter_on_the_trace():
+    trace = Trace(question="q")
+    build_filter("before 2024?", ReplyLLM('{"published_before": "2024-01-01"}'), TOPICS, trace)
+    assert any(s.kind == "filter" for s in trace.translation)
+
+
+def test_build_filter_degrades_when_the_llm_fails():
+    class Failing:
+        def generate(self, prompt):
+            raise LLMError("rate limited")
+
+        def structured(self, prompt, schema):
+            raise LLMError("rate limited")
+
+    trace = Trace(question="q")
+    assert build_filter("q", Failing(), TOPICS, trace).is_empty()
+    assert any("degraded" in n for n in trace.notes)
+
+
+def test_build_filter_degrades_on_malformed_json():
+    trace = Trace(question="q")
+    assert build_filter("q", ReplyLLM("not json"), TOPICS, trace).is_empty()
+    assert any("degraded" in n for n in trace.notes)
+
+
+def test_build_filter_ignores_a_malformed_date():
+    # "2024" is not a date the mask can compare against ISO strings.
+    trace = Trace(question="q")
+    f = build_filter("q", ReplyLLM('{"published_before": "2024"}'), TOPICS, trace)
+    assert f.published_before is None
+
+
+def test_build_filter_needs_no_llm_gracefully():
+    trace = Trace(question="q")
+    assert build_filter("q", None, TOPICS, trace).is_empty()
+    assert any("degraded" in n for n in trace.notes)

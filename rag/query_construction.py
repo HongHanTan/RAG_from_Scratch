@@ -11,11 +11,16 @@ strings and nothing needs parsing.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import numpy as np
 
 from rag.chunking import Chunk
+from rag.llm import LLMError
+from rag.prompts import FILTER_SCHEMA, FILTER_TEMPLATE
+
+ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 @dataclass(frozen=True)
@@ -78,3 +83,42 @@ def compile_mask(
     return np.fromiter(
         (chunk.doc_id in allowed for chunk in chunks), dtype=bool, count=len(chunks)
     )
+
+
+def build_filter(question: str, llm, topics: tuple[str, ...], trace) -> MetadataFilter:
+    """Infer a metadata filter from the question, or an empty one.
+
+    Every failure path returns an empty filter and records a note containing
+    "degraded": a filter is an optimisation, and losing it costs precision,
+    while wrongly applying one can mask the answer out entirely.
+    """
+    if llm is None:
+        trace.note("query construction needs an LLM; degraded to no filter")
+        return MetadataFilter()
+
+    prompt = FILTER_TEMPLATE.format(question=question, topics=", ".join(topics))
+    try:
+        with trace.stage("construct"):
+            parsed = llm.structured(prompt, FILTER_SCHEMA)
+    except LLMError as exc:
+        trace.note(f"query construction failed: {exc}; degraded to no filter")
+        return MetadataFilter()
+
+    # A hallucinated topic would mask out the whole corpus, so drop unknowns.
+    chosen = tuple(t for t in parsed.get("topics", []) if t in topics)
+    dropped = [t for t in parsed.get("topics", []) if t not in topics]
+    if dropped:
+        trace.note(f"query construction proposed unknown topics: {', '.join(dropped)}")
+
+    def _date(key: str) -> str | None:
+        value = parsed.get(key)
+        return value if isinstance(value, str) and ISO_DATE.match(value) else None
+
+    filter_ = MetadataFilter(
+        topics=chosen,
+        authors=tuple(a for a in parsed.get("authors", []) if isinstance(a, str)),
+        published_before=_date("published_before"),
+        published_after=_date("published_after"),
+    )
+    trace.add_translation("filter", filter_.describe())
+    return filter_

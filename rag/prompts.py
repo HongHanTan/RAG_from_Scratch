@@ -142,6 +142,38 @@ Already established:
 """
 
 
+FILTER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "topics": {"type": "array", "items": {"type": "string"}},
+        "authors": {"type": "array", "items": {"type": "string"}},
+        "published_before": {"type": "string"},
+        "published_after": {"type": "string"},
+    },
+    "required": [],
+}
+
+FILTER_TEMPLATE = """Extract any metadata constraints from the question below.
+
+The documents are research papers with these fields:
+- topic, one of: {topics}
+- author, a surname or "Surname et al."
+- publish_date, an ISO date
+
+Reply with a JSON object containing only the constraints the question
+actually states. Omit any field the question does not constrain. Do not
+invent a topic that is not in the list above.
+
+Dates must be full ISO dates. "before 2024" means
+{{"published_before": "2024-01-01"}}.
+
+Most questions state no constraint at all; for those, reply with {{}}.
+
+Question: {question}
+
+JSON:"""
+
+
 def parse_query_list(raw: str) -> list[str]:
     """Extract one query per line from a numbered or bulleted model reply.
 
