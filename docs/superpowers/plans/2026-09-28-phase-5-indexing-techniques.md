@@ -740,10 +740,26 @@ def test_docstore_round_trips(tmp_path):
     assert VectorStore.load(path).docstore == {"d": "the full document text"}
 
 
-def test_docstore_defaults_to_empty(tmp_path):
+def test_an_index_written_without_a_docstore_still_loads(tmp_path):
+    # Note: going through save() would NOT test this -- save always writes a
+    # docstore key, so load never reaches its `else {}` branch. The legacy
+    # path is only exercised by writing an npz that genuinely lacks the key,
+    # which is what every index built before this field looks like, including
+    # the real 5,116-chunk one. Model this on the existing
+    # test_an_index_written_without_doc_meta_still_loads.
+    import json
+    from dataclasses import asdict
+
     path = tmp_path / "index.npz"
-    _store(2).save(path)
-    assert VectorStore.load(path).docstore == {}
+    store = _store(2)
+    np.savez_compressed(
+        path,
+        vectors=store.vectors,
+        chunks=np.array(json.dumps([asdict(c) for c in store.chunks])),
+    )
+    loaded = VectorStore.load(path)
+    assert len(loaded) == 2
+    assert loaded.docstore == {}
 ```
 
 Create `tests/test_multi_representation.py`:
