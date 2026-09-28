@@ -174,6 +174,77 @@ Question: {question}
 JSON:"""
 
 
+ROUTE_SCHEMA = {
+    "type": "object",
+    "properties": {"topics": {"type": "array", "items": {"type": "string"}}},
+    "required": ["topics"],
+}
+
+ROUTE_TEMPLATE = """Decide which collections of papers to search for this question.
+
+Available collections:
+{descriptions}
+
+Choose every collection that might hold the answer, and no more. Choosing too
+few loses the answer; choosing all of them is the same as not routing.
+
+Reply with a JSON object: {{"topics": ["name", ...]}}.
+
+Question: {question}
+
+JSON:"""
+
+TOPIC_DESCRIPTIONS = {
+    "foundations": "transformer and language-model architecture papers",
+    "retrieval-models": "dense, sparse and late-interaction retrieval models and embeddings",
+    "rag-systems": "retrieval-augmented generation systems and their architectures",
+    "prompting-reasoning": "prompting, chain-of-thought reasoning and query transformation",
+    "evaluation-benchmarks": "benchmarks, datasets, metrics and evaluation studies",
+}
+
+PROMPT_VARIANTS = {
+    "definition": ANSWER_TEMPLATE,
+    "mechanism": """You are explaining how something works, using retrieved excerpts.
+
+Rules:
+- Use only the context below. Do not use prior knowledge.
+- If the context does not answer the question, say so plainly and stop.
+- If no documents were retrieved at all, reply that no documents were retrieved
+  and that you therefore cannot answer. Do not repeat this instruction back.
+- Describe the mechanism in order, step by step.
+- Cite the excerpts you used with their bracketed numbers, like [1] or [2].
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:""",
+    "comparison": """You are comparing approaches, using retrieved excerpts.
+
+Rules:
+- Use only the context below. Do not use prior knowledge.
+- If the context does not answer the question, say so plainly and stop.
+- If no documents were retrieved at all, reply that no documents were retrieved
+  and that you therefore cannot answer. Do not repeat this instruction back.
+- State what each approach does, then what distinguishes them.
+- Cite the excerpts you used with their bracketed numbers, like [1] or [2].
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:""",
+}
+
+PROMPT_DESCRIPTIONS = {
+    "definition": "explaining what a term, concept or system is",
+    "mechanism": "describing how a method works, step by step",
+    "comparison": "contrasting two or more approaches against each other",
+}
+
+
 def parse_query_list(raw: str) -> list[str]:
     """Extract one query per line from a numbered or bulleted model reply.
 
