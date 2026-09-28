@@ -267,8 +267,8 @@ Plan: [docs/superpowers/plans/2026-09-28-phase-4-routing-and-query-construction.
 | 6 | Query construction | ✅ | `9204195` | | |
 | 7 | Logical + semantic routing | ✅ | `8176111` | | |
 | 8 | Pipeline wiring | ✅ | `6ae4a12`, `d4f415d` | 527 tests; exemplar routing 7/9 | | widens the benchmark degradation check |
-| 9 | CLI, step-back via structured output, README | 🔄 | | deletes the prose heuristics |
-| — | Final whole-branch review | ⬜ | | |
+| 9 | CLI, step-back via structured output, README | ✅ | `396d98e`..`2eb8b46` | 519 tests (8 prose tests deleted) | | deletes the prose heuristics |
+| — | Final whole-branch review | 🔄 | | |
 
 ### Semantic routing: descriptions lose to exemplars
 
@@ -284,6 +284,23 @@ matches question-shaped text against question-shaped text and scores **7/9**.
 
 That is the same insight HyDE rests on — embed something shaped like what you are
 searching for — applied to routing rather than retrieval. Folded into Task 8.
+
+### Step-back after structured output: churn, not regression
+
+The conversion moved step-back's row — Recall@20 0.475 to 0.383 — which reads as a
+regression and is not one. Scored question by question, **five of ten changed and
+they moved both ways**: `raptor-clustering` 0.33->0.67 and `cot-limits` 0.00->0.50
+improved; `selfrag-tokens` 1.00->0.00, `crag-quality` 1.00->0.50 and `hyde-problem`
+0.50->0.25 worsened. Net negative, but with half the set flipping in both directions
+and each question worth up to 0.1, n=10 cannot distinguish it from chance.
+
+One explanation was tested and disproved: the JSON prompt does return longer questions,
+and the old prompt carried a brevity instruction the new one dropped — but adding it
+back leaves the score at exactly 0.383. Verbosity is not the cause.
+
+Kept anyway. Structured output replaced four successive attempts to parse one line of
+prose, each beaten by a reply shape the last had not anticipated. An unmeasurable
+retrieval difference is worth a parsing path that cannot silently pick the wrong line.
 
 ### Phase 4 carried items
 
