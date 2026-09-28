@@ -238,10 +238,10 @@ Question: {question}
 Answer:""",
 }
 
-PROMPT_DESCRIPTIONS = {
-    "definition": "explaining what a term, concept or system is",
-    "mechanism": "describing how a method works, step by step",
-    "comparison": "contrasting two or more approaches against each other",
+PROMPT_EXEMPLARS = {
+    "definition": "What is X? What does X mean? Define X.",
+    "mechanism": "How does X work? How does X do Y? What are the steps in X?",
+    "comparison": "How does X differ from Y? Compare X and Y. What sets X apart from Y?",
 }
 
 

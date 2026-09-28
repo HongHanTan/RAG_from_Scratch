@@ -7,8 +7,14 @@ Two different mechanisms, deliberately kept apart:
   LLM is for, and it uses structured output so the answer is a field rather
   than prose to be parsed.
 - **Semantic routing** picks which answer prompt to use by embedding the
-  question and comparing it to embedded descriptions of each prompt. No LLM
-  call — if it needed one it would be logical routing with extra steps.
+  question and comparing it to embedded exemplar questions for each prompt. No
+  LLM call — if it needed one it would be logical routing with extra steps.
+  The exemplars are questions, not descriptions of question types: matching a
+  question against a *description of an intent* asks the embedder to encode
+  intent, and a model like MiniLM encodes topic instead. Matching a question
+  against other questions compares like with like. This is the same insight
+  HyDE rests on — embed something shaped like what you are searching for —
+  applied to routing instead of retrieval.
 
 Both degrade to their unrestricted default and record it: routing narrows
 things, so a routing failure should widen the search back rather than
@@ -54,16 +60,21 @@ def logical_route(
 class SemanticRouter:
     """Picks an answer prompt by cosine similarity, with no LLM call.
 
-    Descriptions are embedded once at construction; each question costs one
+    Compares the question against embedded *exemplar questions* for each
+    prompt, not against prose descriptions of what each prompt is for — a
+    description asks the embedder to encode intent, while an exemplar is
+    question-shaped like the thing it is being matched against.
+
+    Exemplars are embedded once at construction; each question costs one
     embedding and one matmul against a handful of vectors.
     """
 
-    def __init__(self, embedder, descriptions: dict[str, str]) -> None:
-        if not descriptions:
-            raise ValueError("a semantic router needs at least one description")
-        self.names = tuple(descriptions)
+    def __init__(self, embedder, exemplars: dict[str, str]) -> None:
+        if not exemplars:
+            raise ValueError("a semantic router needs at least one exemplar")
+        self.names = tuple(exemplars)
         self._embedder = embedder
-        self._vectors = embedder.encode([descriptions[n] for n in self.names])
+        self._vectors = embedder.encode([exemplars[n] for n in self.names])
 
     def route(self, question: str, trace) -> str:
         """The name of the best-matching prompt."""

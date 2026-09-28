@@ -139,3 +139,42 @@ def test_semantic_router_embeds_descriptions_once():
 def test_semantic_router_rejects_an_empty_description_set():
     with pytest.raises(ValueError, match="at least one"):
         SemanticRouter(FakeEmbedder(), {})
+
+
+# --- exemplar questions beat descriptions of intent (needs the real model) --
+#
+# Routing against short descriptions of each prompt's *purpose* ("explaining
+# what a term means") scored 5/9 on this set: MiniLM embeds a question's
+# topic, not the intent behind it, so "What is late interaction?" and "Define
+# reciprocal rank fusion." both landed on `comparison` instead of
+# `definition`. Matching a question against exemplar *questions* instead
+# scores 7/9 — the same fix HyDE makes for retrieval, applied to routing.
+# This pins the improvement so it cannot regress silently.
+
+_KNOWN_INTENT_QUESTIONS = (
+    ("What is late interaction?", "definition"),
+    ("Define reciprocal rank fusion.", "definition"),
+    ("What does chunking mean in a RAG pipeline?", "definition"),
+    ("How does ColBERT score a document?", "mechanism"),
+    ("How does RAPTOR build its tree?", "mechanism"),
+    ("What are the steps in reciprocal rank fusion?", "mechanism"),
+    ("Compare sparse and dense retrieval.", "comparison"),
+    ("What sets RAPTOR apart from flat chunking?", "comparison"),
+    ("How does BM25 differ from dense retrieval?", "comparison"),
+)
+
+
+@pytest.mark.slow
+def test_semantic_router_gets_at_least_seven_of_nine_right_with_exemplars():
+    from rag.embedding import Embedder
+    from rag.prompts import PROMPT_EXEMPLARS
+
+    router = SemanticRouter(
+        Embedder("sentence-transformers/all-MiniLM-L6-v2"), PROMPT_EXEMPLARS
+    )
+    trace = Trace(question="q")
+    correct = sum(
+        router.route(question, trace) == expected
+        for question, expected in _KNOWN_INTENT_QUESTIONS
+    )
+    assert correct >= 7
