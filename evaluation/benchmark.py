@@ -64,7 +64,7 @@ from rag.config import Config
 from rag.embedding import Embedder
 from rag.llm import GeminiLLM
 from rag.loader import load_documents
-from rag.pipeline import ask, load_index
+from rag.pipeline import INDEX_MODES, ask, load_index
 from rag.store import VectorStore
 from rag.strategies import STRATEGY_NAMES
 from rag.trace import DEGRADED, Trace
@@ -279,7 +279,14 @@ def format_table(scores: list[StrategyScore], k: int) -> str:
     return "\n".join([header, *rows])
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser.
+
+    Separate from `main` so the flags can be tested without running a sweep:
+    every strategy over the whole gold set is minutes of work and a pile of
+    LLM calls, which is far too much to pay to find out whether `--index`
+    accepts `raptor`.
+    """
     parser = argparse.ArgumentParser(
         prog="evaluation.benchmark",
         description="Measure every retrieval strategy against the gold set.",
@@ -315,13 +322,27 @@ def main(argv: list[str] | None = None) -> int:
             "evaluation/routing_eval.py."
         ),
     )
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--index",
+        choices=list(INDEX_MODES),
+        default="flat",
+        help=(
+            "which index to measure (default: flat). The non-flat modes must "
+            "have been built first (rag index --index-mode ...); they are "
+            "separate files, so this never touches the flat index."
+        ),
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
 
     config = Config.from_env(env_file=Path(".env"))
 
     embedder = Embedder(config.embedding_model, max_length=config.max_seq_tokens)
     documents = load_documents(config.corpus_dir, config.metadata_path)
-    store = load_index(config)
+    store = load_index(config, mode=args.index)
     gold = load_gold(args.gold, documents)
     llm = GeminiLLM(
         model=config.llm_model, api_key=config.api_key, cache_dir=config.cache_dir
@@ -339,6 +360,10 @@ def main(argv: list[str] | None = None) -> int:
 
     table = format_table(scores, k=args.k)
     print()
+    # Above the table, not only in the log line: a pasted result should say
+    # which index produced it, otherwise three tables of numbers are
+    # indistinguishable once they leave the terminal.
+    print(f"index: {args.index}")
     if args.route:
         print("routed (--route):")
     print(table)

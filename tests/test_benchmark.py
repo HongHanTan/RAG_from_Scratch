@@ -423,3 +423,25 @@ def test_a_non_degradation_note_is_not_fatal():
     trace = Trace(question="q")
     trace.note("generation served from cache")
     check_not_degraded(trace)
+
+
+# --- the --index flag ---------------------------------------------------------
+
+def test_benchmark_accepts_an_index_flag():
+    from evaluation.benchmark import build_parser
+
+    args = build_parser().parse_args(["--index", "raptor"])
+    assert args.index == "raptor"
+
+
+def test_the_index_flag_defaults_to_flat():
+    from evaluation.benchmark import build_parser
+
+    assert build_parser().parse_args([]).index == "flat"
+
+
+def test_an_unknown_index_is_rejected():
+    from evaluation.benchmark import build_parser
+
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["--index", "nope"])
