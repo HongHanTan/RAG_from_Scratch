@@ -242,3 +242,54 @@ def test_an_index_written_without_doc_meta_still_loads(tmp_path):
     loaded = VectorStore.load(path)
     assert len(loaded) == 2
     assert loaded.doc_meta == {}
+
+
+# --- masking ------------------------------------------------------------------
+
+def test_search_with_a_mask_excludes_masked_chunks():
+    store = _store(3)
+    mask = np.array([True, False, True])
+    query = np.array([[0.0, 1.0, 0.0]], dtype=np.float32)  # nearest is d:1
+    ids = [r.chunk.chunk_id for r in store.search(query, 3, mask=mask)[0]]
+    assert "d:1" not in ids
+
+
+def test_a_mask_still_returns_k_results_when_enough_survive():
+    # The point of masking before top-k: k results, not "however many of the
+    # top k happened to survive".
+    store = _store(5)
+    mask = np.array([True, False, True, False, True])
+    query = np.array([[1.0, 0.0, 0.0, 0.0, 0.0]], dtype=np.float32)
+    assert len(store.search(query, 3, mask=mask)[0]) == 3
+
+
+def test_an_all_false_mask_returns_nothing():
+    store = _store(3)
+    mask = np.zeros(3, dtype=bool)
+    query = np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
+    assert store.search(query, 3, mask=mask)[0] == []
+
+
+def test_an_all_true_mask_matches_an_unmasked_search():
+    store = _store(4)
+    query = np.array([[1.0, 0.0, 0.0, 0.0]], dtype=np.float32)
+    unmasked = [r.chunk.chunk_id for r in store.search(query, 3)[0]]
+    masked = [
+        r.chunk.chunk_id
+        for r in store.search(query, 3, mask=np.ones(4, dtype=bool))[0]
+    ]
+    assert masked == unmasked
+
+
+def test_ranks_restart_from_one_after_masking():
+    store = _store(4)
+    mask = np.array([False, True, True, True])
+    query = np.array([[0.0, 1.0, 0.0, 0.0]], dtype=np.float32)
+    assert [r.rank for r in store.search(query, 3, mask=mask)[0]] == [1, 2, 3]
+
+
+def test_a_mask_of_the_wrong_length_is_rejected():
+    store = _store(3)
+    query = np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
+    with pytest.raises(ValueError, match="mask"):
+        store.search(query, 3, mask=np.ones(2, dtype=bool))

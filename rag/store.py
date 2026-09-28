@@ -63,15 +63,38 @@ class VectorStore:
         return int(self.vectors.shape[1])
 
     def search(
-        self, query_vectors: np.ndarray, k: int
+        self,
+        query_vectors: np.ndarray,
+        k: int,
+        mask: np.ndarray | None = None,
     ) -> list[list[RetrievedChunk]]:
-        """Nearest chunks for each query row, best first, ranked from one."""
+        """Nearest chunks for each query row, best first, ranked from one.
+
+        `mask` is applied *before* top-k, by driving masked-out scores below
+        any real cosine value. Filtering the top k afterwards would return
+        however many survived — usually fewer than k, sometimes none.
+        """
         query_vectors = np.atleast_2d(np.asarray(query_vectors, dtype=np.float32))
         if len(self.chunks) == 0:
             return [[] for _ in range(query_vectors.shape[0])]
         # self.vectors is already unit-length (see __post_init__); only the
         # (small) query batch needs normalising here.
         scores = l2_normalize(query_vectors) @ self.vectors.T
+
+        if mask is not None:
+            mask = np.asarray(mask, dtype=bool)
+            if mask.shape != (len(self.chunks),):
+                raise ValueError(
+                    f"mask has shape {mask.shape}, expected "
+                    f"({len(self.chunks)},) — one entry per chunk"
+                )
+            if not mask.any():
+                return [[] for _ in range(query_vectors.shape[0])]
+            # Cosine of unit vectors is in [-1, 1]; -inf cannot be selected
+            # and keeps the surviving order untouched.
+            scores = np.where(mask, scores, -np.inf)
+            k = min(k, int(mask.sum()))
+
         indices, values = top_k(scores, k)
         return [
             [

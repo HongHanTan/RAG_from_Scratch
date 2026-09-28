@@ -668,3 +668,21 @@ def test_direct_also_honours_retrieval_depth(tiny_corpus: Config):
     deep = replace(tiny_corpus, retrieval_depth=6, top_k=2)
     ctx = build_context(deep, llm=None)
     assert len(get_strategy("direct").run("q", ctx).retrieved) <= 2
+
+
+# --- masking -------------------------------------------------------------------
+
+def test_context_search_applies_the_mask(tiny_corpus: Config):
+    import numpy as np
+
+    ctx = build_context(tiny_corpus)
+    ctx.mask = np.array([c.doc_id == "alpha" for c in ctx.store.chunks])
+    results = ctx.search(["cosine"], k=3)[0]
+    assert results
+    assert all(r.chunk.doc_id == "alpha" for r in results)
+
+
+def test_context_search_without_a_mask_is_unfiltered(tiny_corpus: Config):
+    ctx = build_context(tiny_corpus)
+    assert ctx.mask is None
+    assert ctx.search(["cosine"], k=3)[0]

@@ -16,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+import numpy as np
+
 from rag.chunking import RetrievedChunk
 from rag.config import Config
 from rag.store import VectorStore
@@ -29,6 +31,12 @@ class StrategyContext:
     llm: object | None
     config: Config
     trace: Trace
+    mask: np.ndarray | None = None
+    """Chunks retrieval is allowed to return, or None for all of them.
+
+    Set by query construction. Strategies never build it themselves — they
+    just search, and the context applies whatever restriction is in force.
+    """
 
     def search(self, queries: list[str], k: int) -> list[list[RetrievedChunk]]:
         """Embed queries and retrieve k chunks for each, timing both stages."""
@@ -37,7 +45,7 @@ class StrategyContext:
         with self.trace.stage("embed"):
             vectors = self.embedder.encode(queries)
         with self.trace.stage("search"):
-            return self.store.search(vectors, k)
+            return self.store.search(vectors, k, mask=self.mask)
 
 
 @dataclass
