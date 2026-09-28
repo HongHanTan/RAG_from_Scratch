@@ -460,18 +460,75 @@ This is the same insight HyDE rests on (embed something shaped like what
 you're searching for, not a description of it) applied to routing instead of
 retrieval.
 
-### Why these three aren't in the benchmark table
+### Is routing worth using? Measured, not asserted
 
-Routing and query construction change *what is searched* — which documents
-are even candidates — not *how* a strategy searches them once the candidate
-set is fixed, which is what the six-strategy table above measures. Scoring
-`--route` or `--construct` against the same 10-question gold set would
-answer a different question ("did narrowing the corpus help find the gold
-passage" rather than "did this translation find it faster or more
-precisely"), and both are off by default in the benchmark for exactly that
-reason — confirmed here by re-running the benchmark after adding them: all
-six rows besides step-back's (changed for the reason above, not because
-anything leaked) are bit-for-bit identical to the Phase 3 table.
+This section used to argue that scoring `--route` against the gold set
+"would answer a different question" than the strategy table above and leave
+it at that. That argument doesn't survive contact with the gold set itself:
+every one of its 10 questions already names a `doc_id`, and every document
+already carries a `topic` in `store.doc_meta` — so routing accuracy is
+computable with zero new labelling. Did `logical_route` return a topic set
+containing the topic of the document that actually holds the answer?
+`evaluation/routing_eval.py` answers that directly, with no new gold data:
+
+```
+$ python -m evaluation.routing_eval
+| Recall | Abstention rate | Mean topics chosen | Topics available | Questions |
+|---:|---:|---:|---:|---:|
+| 0.900 | 0.000 | 1.30 | 5 | 10 |
+```
+
+Read all three numbers together, not the first alone — a router that always
+returns `()` ("search everything") would also score 1.000 on recall while
+doing nothing. This one doesn't do that: abstention rate is 0.000, and mean
+topics chosen is 1.30 of the 5 available, close to the most aggressive
+narrowing possible (1) rather than the least (5). It narrows hard and still
+contains the right topic 9 times out of 10.
+
+That is a different question from "does narrowing the candidate set before a
+strategy searches make retrieval better or worse" — and `--route` on
+`evaluation.benchmark` answers that one, at the cost of one extra
+`.structured()` call per question (visible in `LLM calls` below):
+
+```
+$ python -m evaluation.benchmark --route
+| Strategy | Recall@20 | MRR@20 | nDCG@20 | DocPrec@5 | LLM calls | Mean ms (warm) | Questions |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| hyde | 0.592 | 0.261 | 0.292 | 0.620 | 2.0 | 148 | 10 |
+| rag-fusion | 0.392 | 0.163 | 0.200 | 0.580 | 2.0 | 70 | 10 |
+| multi-query | 0.375 | 0.197 | 0.211 | 0.460 | 2.0 | 70 | 10 |
+| step-back | 0.350 | 0.125 | 0.152 | 0.320 | 2.0 | 45 | 10 |
+| direct | 0.292 | 0.106 | 0.129 | 0.600 | 1.0 | 32 | 10 |
+| decomposition | 0.267 | 0.107 | 0.129 | 0.560 | 4.4 | 83 | 10 |
+```
+
+Against the unrouted table above, `Recall@20` moves in every direction at
+once: up for `hyde` (0.558 → 0.592), unchanged for `rag-fusion` and
+`multi-query`, and down for `step-back`, `direct` and, worst, `decomposition`
+(0.333 → 0.267). Averaged across all six strategies it drops slightly, 0.394
+→ 0.378; `DocPrec@5`'s average is essentially flat, 0.530 → 0.523.
+**Routing does not help retrieval on this corpus.** Its 90% topic recall
+above is real, but the 10% it gets wrong excludes the gold document's topic
+entirely for that question, and on a 38-document corpus that plain top-k
+already answers reasonably well, that miss costs most strategies more recall
+than narrowing the search space gains them. `hyde` is the one strategy that
+improved; this gold set is too small to say why. This is a measured negative
+result, reported the same way the four under-performing Phase 2 strategies
+already are above — an honest "doesn't help here" is worth more than an
+unmeasured "would help".
+
+### `--construct` and `--semantic-prompt` are still not in the benchmark table
+
+The trick that makes `--route` measurable — every gold question already
+names a `doc_id`, every document already carries the one label being routed
+on — doesn't extend to `--construct`. Query construction infers a date
+bound, an author *or* a topic from the question, and there is no gold label
+for "the right author" or "the right cutoff date" the way there is a
+`topic` for every document; building one would mean labelling a second gold
+set this project doesn't have. `--semantic-prompt` picks an answer-prompt
+variant, not a candidate set, so it doesn't change what's retrieved at all
+and has nothing for the strategy table to measure. Both stay off by default
+in the benchmark for that reason, unlike `--route` above.
 
 ## Known limitations
 
