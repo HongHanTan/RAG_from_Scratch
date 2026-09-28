@@ -266,8 +266,8 @@ Plan: [docs/superpowers/plans/2026-09-28-phase-4-routing-and-query-construction.
 | 5 | Apply the mask before top-k | ✅ | `02a55d0` | 495 tests; k results, not survivors | |
 | 6 | Query construction | ✅ | `9204195` | | |
 | 7 | Logical + semantic routing | ✅ | `8176111` | | |
-| 8 | Pipeline wiring | 🔄 | | widens the benchmark degradation check |
-| 9 | CLI, step-back via structured output, README | ⬜ | | deletes the prose heuristics |
+| 8 | Pipeline wiring | ✅ | `6ae4a12`, `d4f415d` | 527 tests; exemplar routing 7/9 | | widens the benchmark degradation check |
+| 9 | CLI, step-back via structured output, README | 🔄 | | deletes the prose heuristics |
 | — | Final whole-branch review | ⬜ | | |
 
 ### Semantic routing: descriptions lose to exemplars
@@ -286,6 +286,30 @@ That is the same insight HyDE rests on — embed something shaped like what you 
 searching for — applied to routing rather than retrieval. Folded into Task 8.
 
 ### Phase 4 carried items
+
+- **Sentinel coverage, queued for Task 9.** Sweeping every `trace.note` in `rag/` for
+  failure-shaped wording found two without the `degraded` sentinel the benchmark now
+  hard-fails on:
+  - `decomposition.py` — "sub-question failed, continuing without it". A genuine
+    partial degradation: the strategy carries on with fewer sub-answers, so its
+    benchmark numbers would be quietly based on less work than the method specifies.
+    **This is the exact blind spot the Phase 3 final review called latent** and it is
+    still open. Add the sentinel.
+  - `generation.py` — "generation failed". Not a degradation: there is no fallback,
+    the answer is simply absent, and the benchmark runs with `generate=False` so it
+    never fires there. Leave it, but say so in a comment so the next sweep does not
+    re-raise it.
+  The deeper point for the final review: the sentinel is a contract enforced only by
+  convention, and it has now been missed twice by two different authors.
+
+- **Task 7, IMPORTANT — FIXED** (`d4f415d`). `logical_route` has three failure paths; two note
+  "degraded to searching everything", the third — the model returning topics that are
+  all hallucinated or an empty list — notes "chose nothing valid; searching
+  everything", with no `degraded`. Confirmed by grepping the notes. Task 8 widens the
+  benchmark's check to that single word, so this one failure mode would go uncounted:
+  routing could silently fall through on every question and the benchmark would read
+  it as "routing does not help". Exactly the failure Phase 2 already hit once. One-line
+  fix; queued behind Task 8, which is editing the same file.
 
 - **Tasks 3-5, Minor** — `_check_shape` treats a bool as a valid `integer`, since
   `isinstance(True, int)` is True in Python. Latent only: no schema in the project
