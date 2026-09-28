@@ -81,7 +81,17 @@ class MetadataFilter:
 def compile_mask(
     filter_: MetadataFilter, chunks: list[Chunk], doc_meta: dict
 ) -> np.ndarray:
-    """A boolean mask over chunks, True where the chunk's document matches."""
+    """A boolean mask over chunks, True where the chunk's document matches.
+
+    Summary nodes follow from the existing rule rather than a special case. A
+    multi-representation summary carries its document's real `doc_id`, so it
+    inherits that document's filters. A RAPTOR cluster summary spans several
+    documents, has a synthetic `doc_id` absent from `doc_meta`, and is
+    therefore excluded by any active filter — which means a filtered search
+    against a RAPTOR index loses its abstraction levels and falls back to
+    raw chunks. That is the conservative choice: a summary of documents that
+    mostly fail the filter should not survive it.
+    """
     if filter_.is_empty():
         return np.ones(len(chunks), dtype=bool)
     allowed = {

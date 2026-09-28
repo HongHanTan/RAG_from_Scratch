@@ -15,6 +15,17 @@ from dataclasses import dataclass
 
 from rag.loader import Document
 
+SYNTHETIC_SPAN = -1
+"""Character and token offsets for a node that is not a span of a document.
+
+A RAPTOR cluster summary or a multi-representation document summary is
+generated text, not an extract, so it has no position in any source. Using
+-1 rather than 0 matters: `chunks_overlapping` tests
+`chunk.char_start < span_end and span_start < chunk.char_end`, and a
+(-1, -1) node fails the second half for every real span, which is exactly
+what stops a summary counting as a correct retrieval for a gold question.
+"""
+
 
 @dataclass(frozen=True)
 class Chunk:
@@ -26,6 +37,16 @@ class Chunk:
     token_end: int   # exclusive
     char_start: int
     char_end: int    # exclusive
+    level: int = 0
+    """0 for a real span of a document, 1 or more for a summary node.
+
+    Defaulted so that an index written before this field existed still
+    reconstructs through `Chunk(**record)`.
+    """
+
+    @property
+    def is_synthetic(self) -> bool:
+        return self.level > 0
 
 
 @dataclass
@@ -51,6 +72,30 @@ class RetrievedChunk:
     display that calls both "score" makes fusion look like a collapse in
     quality. The name travels with the number.
     """
+
+
+def make_summary_chunk(
+    chunk_id: str, doc_id: str, index: int, text: str, level: int
+) -> Chunk:
+    """A chunk holding generated text rather than an extract.
+
+    `doc_id` is the real document for a multi-representation summary, so it
+    inherits that document's metadata filters, and a synthetic id for a
+    RAPTOR cluster summary, which belongs to no single document.
+    """
+    if level < 1:
+        raise ValueError(f"a summary chunk needs level >= 1, got {level}")
+    return Chunk(
+        chunk_id=chunk_id,
+        doc_id=doc_id,
+        index=index,
+        text=text,
+        token_start=SYNTHETIC_SPAN,
+        token_end=SYNTHETIC_SPAN,
+        char_start=SYNTHETIC_SPAN,
+        char_end=SYNTHETIC_SPAN,
+        level=level,
+    )
 
 
 def window_bounds(n_tokens: int, size: int, overlap: int) -> list[tuple[int, int]]:

@@ -63,3 +63,25 @@ def test_relevant_chunk_ids_unions_every_span():
         spans=((10, 20), (200, 210)),
     )
     assert relevant_chunk_ids(question, _chunks()) == {"a:0", "a:2"}
+
+
+def test_a_synthetic_node_never_satisfies_a_gold_span():
+    # Gold spans are character ranges in a real document. A summary node is
+    # not a span of anything, so it must never count as a correct retrieval
+    # -- otherwise RAPTOR would score for returning its own summaries.
+    from rag.chunking import make_summary_chunk
+
+    chunks = _chunks() + [make_summary_chunk("raptor:1:0", "raptor:1:0", 0, "s", level=1)]
+    relevant = chunks_overlapping("alpha", 0, 300, chunks)
+    assert "raptor:1:0" not in relevant
+
+
+def test_a_synthetic_node_with_the_same_doc_id_is_still_excluded():
+    # Multi-representation summaries carry their document's real doc_id, so
+    # exclusion cannot rely on the id being synthetic -- only on the span.
+    from rag.chunking import make_summary_chunk
+
+    node = make_summary_chunk("alpha:summary", "alpha", 0, "s", level=1)
+    assert chunks_overlapping("alpha", 0, 300, _chunks() + [node]) == {
+        "a:0", "a:1", "a:2"
+    }

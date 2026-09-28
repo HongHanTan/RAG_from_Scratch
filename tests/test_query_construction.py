@@ -238,3 +238,30 @@ def test_build_filter_needs_no_llm_gracefully():
     trace = Trace(question="q")
     assert build_filter("q", None, TOPICS, trace).is_empty()
     assert any("degraded" in n for n in trace.notes)
+
+
+def test_a_multi_representation_summary_inherits_its_documents_filter():
+    # Its doc_id is the real document's, so a topic or date filter that keeps
+    # the document keeps its summary too. That is what makes filtered search
+    # work against a multi-representation index.
+    from rag.chunking import make_summary_chunk
+
+    chunks = _chunks() + [make_summary_chunk("a:summary", "a", 0, "s", level=1)]
+    mask = compile_mask(
+        MetadataFilter(topics=("retrieval-models",)), chunks, _doc_meta()
+    )
+    assert mask[-1]
+
+
+def test_a_raptor_cluster_summary_is_excluded_by_any_filter():
+    # A cluster summary spans several documents, so it has no single doc_id
+    # and no metadata. Excluding it is deliberate: a summary of documents
+    # that mostly fail the filter should not survive it. Documented because
+    # it means a filtered RAPTOR search loses its abstraction levels.
+    from rag.chunking import make_summary_chunk
+
+    node = make_summary_chunk("raptor:1:0", "raptor:1:0", 0, "s", level=1)
+    mask = compile_mask(
+        MetadataFilter(topics=("retrieval-models",)), _chunks() + [node], _doc_meta()
+    )
+    assert not mask[-1]

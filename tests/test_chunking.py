@@ -112,3 +112,29 @@ def test_chunk_documents_concatenates_in_document_order():
 def test_chunks_are_returned_as_the_dataclass():
     chunks = chunk_document(_doc("a b"), FakeTokenizer(), size=2, overlap=0)
     assert isinstance(chunks[0], Chunk)
+
+
+def test_a_chunk_defaults_to_level_zero():
+    # Every index written before this field existed reconstructs with
+    # Chunk(**record); a field without a default would break all of them.
+    chunk = Chunk("d:0", "d", 0, "text", 0, 10, 0, 4)
+    assert chunk.level == 0
+    assert not chunk.is_synthetic
+
+
+def test_a_summary_chunk_is_synthetic_and_has_no_span():
+    from rag.chunking import SYNTHETIC_SPAN, make_summary_chunk
+
+    node = make_summary_chunk("raptor:1:3", "raptor:1:3", 3, "a summary", level=1)
+    assert node.level == 1
+    assert node.is_synthetic
+    assert node.char_start == SYNTHETIC_SPAN
+    assert node.char_end == SYNTHETIC_SPAN
+    assert node.token_start == SYNTHETIC_SPAN
+    assert node.token_end == SYNTHETIC_SPAN
+
+
+def test_a_summary_chunk_keeps_its_text():
+    from rag.chunking import make_summary_chunk
+
+    assert make_summary_chunk("s:0", "s:0", 0, "the summary", level=2).text == "the summary"
