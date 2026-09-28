@@ -1087,7 +1087,11 @@ def _vectors(n=40, seed=0):
 
 
 def _config(**kw):
-    return Config(raptor_max_depth=3, raptor_cluster_size=8, **kw)
+    # Merged into one dict rather than passed as explicit keywords, so that a
+    # caller overriding raptor_max_depth or raptor_cluster_size replaces the
+    # default instead of colliding with it ("got multiple values for keyword
+    # argument").
+    return Config(**{"raptor_max_depth": 3, "raptor_cluster_size": 8, **kw})
 
 
 def test_returns_the_original_chunks_plus_summaries():
