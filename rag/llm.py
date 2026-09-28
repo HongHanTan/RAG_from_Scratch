@@ -80,6 +80,29 @@ def cache_key(model: str, prompt: str, temperature: float) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _evict_cache_for(llm: object, prompt: str) -> None:
+    """Remove `llm`'s cache entry for `prompt`, if it has one.
+
+    `generate` writes its reply to the cache before `structured` gets a
+    chance to check it, so a malformed reply would otherwise be cached under
+    a deterministic key forever -- every later call, including one from a
+    fresh process with a working API, would keep re-reading the same bad
+    text and re-failing identically. Deleting it here means a retry can
+    actually reach the model.
+
+    Best-effort and tolerant of objects that are not a real `GeminiLLM`: test
+    doubles share `structured`'s parsing logic via
+    `GeminiLLM.structured(self, ...)` but duck-type only `generate`, with no
+    `model`/`temperature`/cache directory of their own. Any of that being
+    missing is swallowed exactly like a missing cache file.
+    """
+    try:
+        key = cache_key(llm.model, prompt, llm.temperature)
+        llm._cache_path(key).unlink()
+    except (AttributeError, FileNotFoundError):
+        pass
+
+
 class GeminiLLM:
     def __init__(
         self,
@@ -172,13 +195,24 @@ class GeminiLLM:
         reply cannot be parsed or does not match the schema — callers are
         expected to catch that and fall back to a safe default, because a
         routing or filtering step that fails should not lose the answer.
+
+        A reply that fails either check is evicted from the cache rather than
+        left there: `generate` already wrote it before this method could
+        judge it, and leaving a bad reply cached would make every future call
+        with this prompt fail the same way, permanently, even once the model
+        would answer correctly.
         """
         raw = self.generate(prompt)
         try:
             parsed = json.loads(_extract_json_object(raw))
         except json.JSONDecodeError as exc:
+            _evict_cache_for(self, prompt)
             raise LLMError(
                 f"model reply was not valid JSON: {exc}; got {raw[:120]!r}"
             ) from exc
-        _check_shape(parsed, schema)
+        try:
+            _check_shape(parsed, schema)
+        except LLMError:
+            _evict_cache_for(self, prompt)
+            raise
         return parsed

@@ -236,3 +236,62 @@ def test_structured_uses_the_same_cache_as_generate(tmp_path):
     llm.structured("p", SCHEMA)
     llm.structured("p", SCHEMA)
     assert llm.call_count == 1
+
+
+# --- a failed structured() reply must not poison the cache forever ----------
+#
+# generate() writes the reply to disk before structured() gets a chance to
+# parse or shape-check it, so a malformed reply used to be cached under a
+# deterministic key: every later call -- even from a fresh process with a
+# working API -- would re-read the same bad text and re-fail identically,
+# never making another API call.
+
+
+def test_structured_does_not_permanently_cache_unparseable_json(tmp_path):
+    cache_dir = tmp_path / "cache"
+    first = GeminiLLM(
+        model="fake-model",
+        api_key="key",
+        cache_dir=cache_dir,
+        client=FakeClient(["not json at all"]),
+        sleep=lambda seconds: None,
+        max_retries=1,
+    )
+    with pytest.raises(LLMError, match="JSON"):
+        first.structured("p", SCHEMA)
+
+    second = GeminiLLM(
+        model="fake-model",
+        api_key="key",
+        cache_dir=cache_dir,
+        client=FakeClient(['{"topics": ["a"]}']),
+        sleep=lambda seconds: None,
+        max_retries=1,
+    )
+    assert second.structured("p", SCHEMA) == {"topics": ["a"]}
+    assert second.call_count == 1  # the retry actually reached the model
+
+
+def test_structured_does_not_permanently_cache_a_shape_failure(tmp_path):
+    cache_dir = tmp_path / "cache"
+    first = GeminiLLM(
+        model="fake-model",
+        api_key="key",
+        cache_dir=cache_dir,
+        client=FakeClient(['{"reason": "no topics here"}']),
+        sleep=lambda seconds: None,
+        max_retries=1,
+    )
+    with pytest.raises(LLMError, match="topics"):
+        first.structured("p", SCHEMA)
+
+    second = GeminiLLM(
+        model="fake-model",
+        api_key="key",
+        cache_dir=cache_dir,
+        client=FakeClient(['{"topics": ["a"]}']),
+        sleep=lambda seconds: None,
+        max_retries=1,
+    )
+    assert second.structured("p", SCHEMA) == {"topics": ["a"]}
+    assert second.call_count == 1
