@@ -145,6 +145,7 @@ def score_strategy(
     llm,
     config: Config,
     k: int,
+    route: bool = False,
 ) -> StrategyScore:
     """Run one strategy over every gold question and average the metrics.
 
@@ -176,6 +177,16 @@ def score_strategy(
 
     `llm` is wrapped in `_CallCountingLLM` so `llm_calls` counts every logical
     `.generate()` call, cache hit or miss.
+
+    `route=True` runs every strategy with logical routing switched on ahead
+    of it (`ask(..., route=True)`), narrowing the candidate set to the
+    topics the router chooses before the strategy searches. `llm_calls` then
+    includes the routing call itself (one `.structured()` call per question,
+    via `_CallCountingLLM`), and `check_not_degraded` still applies: if the
+    router ever falls back to searching everything for a gold question, that
+    is exactly as fatal here as an LLM failure inside the strategy itself --
+    both would otherwise let a degraded run be measured and reported as
+    "routing".
     """
     counting_llm = _CallCountingLLM(llm) if llm is not None else None
     effective_llm = counting_llm if counting_llm is not None else llm
@@ -194,6 +205,7 @@ def score_strategy(
                 k=k,
                 strategy=strategy,
                 generate=False,
+                route=route,
             )
             check_not_degraded(trace)
             calls = counting_llm.logical_call_count if counting_llm is not None else 0
@@ -290,6 +302,19 @@ def main(argv: list[str] | None = None) -> int:
         help="measure only these strategies (repeatable)",
     )
     parser.add_argument("--out", type=Path, help="also write the table here")
+    parser.add_argument(
+        "--route",
+        action="store_true",
+        help=(
+            "run every strategy with logical routing switched on first "
+            "(ask(..., route=True)), narrowing the candidate set to the "
+            "router's chosen topics before the strategy searches. Produces "
+            "the same columns, so the two tables are directly comparable -- "
+            "that comparison is what says whether routing helps or hurts "
+            "retrieval, not the routing-only numbers in "
+            "evaluation/routing_eval.py."
+        ),
+    )
     args = parser.parse_args(argv)
 
     config = Config.from_env(env_file=Path(".env"))
@@ -305,13 +330,17 @@ def main(argv: list[str] | None = None) -> int:
     selected = args.strategy or list(STRATEGY_NAMES)
     scores = []
     for strategy in selected:
-        print(f"running {strategy}...", flush=True)
+        print(f"running {strategy}{' (routed)' if args.route else ''}...", flush=True)
         scores.append(
-            score_strategy(strategy, gold, store, embedder, llm, config, args.k)
+            score_strategy(
+                strategy, gold, store, embedder, llm, config, args.k, route=args.route
+            )
         )
 
     table = format_table(scores, k=args.k)
     print()
+    if args.route:
+        print("routed (--route):")
     print(table)
     if args.out:
         args.out.write_text(table + "\n", encoding="utf-8")

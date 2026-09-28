@@ -199,6 +199,87 @@ def test_counting_llm_counts_a_strategy_that_does_call_the_llm(tiny_corpus: Conf
     assert counting_llm.logical_call_count == 1
 
 
+# --- score_strategy with route=True ------------------------------------------
+#
+# route=True is what --route wires up: ask(..., route=True) ahead of the
+# strategy. It must (a) do nothing when the corpus has no topics, so plain
+# runs are unaffected, (b) show up in llm_calls once routing has something to
+# choose between, since a `.structured()` call is exactly as real a cost as
+# any other, and (c) still make check_not_degraded fatal when the router
+# itself falls back -- a degraded router is exactly the silent-fallback case
+# the benchmark already refuses to measure for every strategy.
+
+
+def test_route_true_is_a_no_op_when_the_corpus_has_no_topics(tiny_corpus: Config):
+    from evaluation.benchmark import score_strategy
+    from evaluation.gold import GoldQuestion
+
+    store = build_index(tiny_corpus, FakeEmbedder())
+    assert all(not r.get("topic") for r in store.doc_meta.values())
+
+    gold = [
+        GoldQuestion(
+            id="g1", question="what is cosine similarity?", doc_id="alpha",
+            quotes=("Cosine similarity measures the angle",), why="w",
+            spans=((0, 10),),
+        ),
+    ]
+    llm = FakeLLM("should never be called")
+    score = score_strategy(
+        "direct", gold, store, FakeEmbedder(), llm, tiny_corpus, k=3, route=True
+    )
+    assert score.llm_calls == pytest.approx(0.0)
+
+
+def test_route_true_counts_the_routing_call(tiny_corpus: Config):
+    from evaluation.benchmark import score_strategy
+    from evaluation.gold import GoldQuestion
+
+    store = build_index(tiny_corpus, FakeEmbedder())
+    store.doc_meta["alpha"]["topic"] = "vectors"
+    store.doc_meta["beta"]["topic"] = "fusion"
+
+    gold = [
+        GoldQuestion(
+            id="g1", question="what is cosine similarity?", doc_id="alpha",
+            quotes=("Cosine similarity measures the angle",), why="w",
+            spans=((0, 10),),
+        ),
+    ]
+    llm = FakeLLM('{"topics": ["vectors"]}')
+    # `direct` never touches the LLM on its own, so the one logical call
+    # counted here can only be the routing call.
+    score = score_strategy(
+        "direct", gold, store, FakeEmbedder(), llm, tiny_corpus, k=3, route=True
+    )
+    assert score.llm_calls == pytest.approx(1.0)
+
+
+def test_route_true_makes_a_degraded_router_fatal(tiny_corpus: Config):
+    from evaluation.benchmark import score_strategy
+    from evaluation.gold import GoldQuestion
+
+    store = build_index(tiny_corpus, FakeEmbedder())
+    store.doc_meta["alpha"]["topic"] = "vectors"
+    store.doc_meta["beta"]["topic"] = "fusion"
+
+    gold = [
+        GoldQuestion(
+            id="g1", question="what is cosine similarity?", doc_id="alpha",
+            quotes=("Cosine similarity measures the angle",), why="w",
+            spans=((0, 10),),
+        ),
+    ]
+    # A reply naming no valid topic makes logical_route abstain and write a
+    # "degraded" note -- check_not_degraded must treat that as fatal exactly
+    # like a degraded strategy translation.
+    llm = FakeLLM('{"topics": ["not-a-real-topic"]}')
+    with pytest.raises(RuntimeError, match="degraded"):
+        score_strategy(
+            "direct", gold, store, FakeEmbedder(), llm, tiny_corpus, k=3, route=True
+        )
+
+
 # --- score_strategy end to end -------------------------------------------------
 #
 # Nothing previously exercised score_strategy itself -- the function that
