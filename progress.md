@@ -397,3 +397,34 @@ document is `lost_in_middle`, which I filed under `evaluation-benchmarks`, and t
 router chose `prompting-reasoning` — a defensible reading. Deliberately **not**
 reclassified: changing the partition after seeing which question the router missed is
 fitting labels to the metric, which is worse than an honestly earned 0.900.
+
+---
+
+# Phase 5 — Indexing Techniques: Progress
+
+Branch: `phase-5-indexing` (stacked on `phase-4-routing`; none merged to `main` yet)
+Plan: [docs/superpowers/plans/2026-09-28-phase-5-indexing-techniques.md](docs/superpowers/plans/2026-09-28-phase-5-indexing-techniques.md)
+
+| # | Task | Status | Commits | Notes |
+|---|------|--------|---------|-------|
+| 1 | Synthetic node conventions (`level`, `-1` spans) | ⬜ | | |
+| 2 | K-means in NumPy | ⬜ | | |
+| 3 | Summarisation | ⬜ | | |
+| 4 | Multi-representation indexing | ⬜ | | |
+| 5 | RAPTOR tree building | ⬜ | | |
+| 6 | Index modes | ⬜ | | |
+| 7 | Retrieval against the new indexes | ⬜ | | |
+| 8 | Build, measure, write up | ⬜ | | |
+| — | Final whole-branch review | ⬜ | | |
+
+**Key decision.** RAPTOR and multi-representation build their own index files
+(`data/index-raptor.npz`, `data/index-multirep.npz`). The spec asks for one
+`VectorStore` spanning all levels, which holds *inside* the RAPTOR index — but the
+benchmark scores gold spans against `store.chunks`, so adding summary nodes to the
+default index would move all six baseline rows for reasons unrelated to the
+strategies. Each technique is measured as its own run via `--index`.
+
+**Expected measurement artifact.** The gold set marks chunks overlapping an answering
+span. A multi-representation index contains no such chunks — only 38 summaries — so
+Recall@20 may be exactly 0 there. That is the metric failing to see the technique, not
+the technique failing; `DocPrec@5` is the only column that means anything for it.
