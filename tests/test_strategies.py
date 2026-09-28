@@ -33,6 +33,9 @@ class FailingLLM:
     def generate(self, prompt: str) -> str:
         raise LLMError("rate limited")
 
+    def structured(self, prompt: str, schema: dict) -> dict:
+        raise LLMError("rate limited")
+
 
 # --- context -----------------------------------------------------------------
 
@@ -265,15 +268,18 @@ def test_rag_fusion_records_a_merge_stage(tiny_corpus: Config):
 
 # --- step-back -----------------------------------------------------------------
 
+STEP_BACK_JSON_REPLY = '{"question": "What is vector similarity?"}'
+
+
 def test_step_back_asks_for_a_more_general_question(tiny_corpus: Config):
-    llm = FakeLLM("What is vector similarity?")
+    llm = FakeLLM(STEP_BACK_JSON_REPLY)
     ctx = build_context(tiny_corpus, llm=llm)
     get_strategy("step-back").run("how does cosine handle magnitude?", ctx)
     assert "how does cosine handle magnitude?" in llm.prompts[0]
 
 
 def test_step_back_searches_both_questions(tiny_corpus: Config):
-    ctx = build_context(tiny_corpus, llm=FakeLLM("What is vector similarity?"))
+    ctx = build_context(tiny_corpus, llm=FakeLLM(STEP_BACK_JSON_REPLY))
     get_strategy("step-back").run("specific question", ctx)
     assert ctx.trace.queries == ["specific question", "What is vector similarity?"]
 
@@ -281,7 +287,7 @@ def test_step_back_searches_both_questions(tiny_corpus: Config):
 def test_step_back_records_the_general_question_as_a_translation_step(
     tiny_corpus: Config,
 ):
-    ctx = build_context(tiny_corpus, llm=FakeLLM("What is vector similarity?"))
+    ctx = build_context(tiny_corpus, llm=FakeLLM(STEP_BACK_JSON_REPLY))
     get_strategy("step-back").run("q", ctx)
     assert [(s.kind, s.text) for s in ctx.trace.translation] == [
         ("step_back", "What is vector similarity?")
@@ -289,7 +295,7 @@ def test_step_back_records_the_general_question_as_a_translation_step(
 
 
 def test_step_back_returns_at_most_top_k_deduplicated(tiny_corpus: Config):
-    ctx = build_context(tiny_corpus, llm=FakeLLM("general question"))
+    ctx = build_context(tiny_corpus, llm=FakeLLM(STEP_BACK_JSON_REPLY))
     result = get_strategy("step-back").run("q", ctx)
     ids = [r.chunk.chunk_id for r in result.retrieved]
     assert len(ids) == len(set(ids))
@@ -304,34 +310,48 @@ def test_step_back_degrades_when_the_llm_fails(tiny_corpus: Config):
 
 
 def test_step_back_degrades_when_the_general_question_is_blank(tiny_corpus: Config):
-    ctx = build_context(tiny_corpus, llm=FakeLLM("   "))
+    ctx = build_context(tiny_corpus, llm=FakeLLM('{"question": "   "}'))
     result = get_strategy("step-back").run("q", ctx)
     assert any("degraded to direct retrieval" in n for n in ctx.trace.notes)
 
 
-def test_step_back_strips_a_leading_preamble(tiny_corpus: Config):
-    reply = "Sure, here's a more general question:\nWhat is vector similarity?"
-    ctx = build_context(tiny_corpus, llm=FakeLLM(reply))
-    get_strategy("step-back").run("q", ctx)
-    assert ctx.trace.queries == ["q", "What is vector similarity?"]
-
-
-def test_step_back_handles_a_bare_question_with_no_preamble(tiny_corpus: Config):
-    ctx = build_context(tiny_corpus, llm=FakeLLM("What is vector similarity?"))
-    get_strategy("step-back").run("q", ctx)
-    assert ctx.trace.queries == ["q", "What is vector similarity?"]
-
-
-def test_step_back_handles_a_numbered_single_item_reply(tiny_corpus: Config):
-    ctx = build_context(tiny_corpus, llm=FakeLLM("1. What is vector similarity?"))
-    get_strategy("step-back").run("q", ctx)
-    assert ctx.trace.queries == ["q", "What is vector similarity?"]
-
-
 def test_step_back_records_a_merge_stage(tiny_corpus: Config):
-    ctx = build_context(tiny_corpus, llm=FakeLLM("What is vector similarity?"))
+    ctx = build_context(tiny_corpus, llm=FakeLLM(STEP_BACK_JSON_REPLY))
     get_strategy("step-back").run("q", ctx)
     assert "merge" in [t.name for t in ctx.trace.timings]
+
+
+def test_step_back_uses_structured_output(tiny_corpus: Config):
+    # Phase 2's step-back parsed prose and took four attempts to get right.
+    # The code recorded that structured output was the principled fix.
+    class StructuredLLM:
+        def generate(self, prompt):
+            return STEP_BACK_JSON_REPLY
+
+        def structured(self, prompt, schema):
+            from rag.llm import GeminiLLM
+
+            return GeminiLLM.structured(self, prompt, schema)
+
+    ctx = build_context(tiny_corpus, llm=StructuredLLM())
+    get_strategy("step-back").run("how does cosine handle magnitude?", ctx)
+    assert ctx.trace.queries[1] == "What is vector similarity?"
+
+
+def test_step_back_degrades_when_structured_output_fails(tiny_corpus: Config):
+    class BadLLM:
+        def generate(self, prompt):
+            return "not json"
+
+        def structured(self, prompt, schema):
+            from rag.llm import GeminiLLM
+
+            return GeminiLLM.structured(self, prompt, schema)
+
+    ctx = build_context(tiny_corpus, llm=BadLLM())
+    result = get_strategy("step-back").run("q", ctx)
+    assert result.retrieved
+    assert any("degraded" in n for n in ctx.trace.notes)
 
 
 # --- hyde ------------------------------------------------------------------
@@ -607,51 +627,6 @@ def test_a_failed_sub_answer_does_not_abort_the_whole_strategy(tiny_corpus: Conf
     # A partial failure is a genuine degradation -- the benchmark must be
     # able to catch it via the shared "degraded" sentinel.
     assert any("degraded" in n for n in ctx.trace.notes)
-
-
-@pytest.mark.parametrize(
-    "reply",
-    [
-        "Sure, here's a more general question:\nWhat is vector similarity?",
-        "What is vector similarity?",
-        "1. What is vector similarity?",
-        "What is vector similarity?\nHope that helps!",
-        "Here you go:\nWhat is vector similarity?\nLet me know if you need more.",
-        "**What is vector similarity?**",
-        "Are you asking about this in general?\nWhat is vector similarity?",
-        "What is vector similarity?\nAnything else you'd like?",
-        "Let me know if this helps.\nWhat is vector similarity?",
-    ],
-)
-def test_step_back_finds_the_question_among_model_chatter(
-    tiny_corpus: Config, reply: str
-):
-    # The model is asked for one bare line and frequently adds a preamble, a
-    # sign-off, or both. Picking the first line searches the preamble; picking
-    # the last searches the sign-off. Neither positional rule survives contact
-    # with a real model, so the question is identified by looking like one.
-    ctx = build_context(tiny_corpus, llm=FakeLLM(reply))
-    get_strategy("step-back").run("how does cosine handle magnitude?", ctx)
-    assert ctx.trace.queries[1] == "What is vector similarity?"
-
-
-def test_step_back_does_not_treat_io_as_chatter(tiny_corpus: Config):
-    # \bi\b (case-insensitive) matches the "I" in "I/O", so a preamble plus a
-    # legitimate general question about I/O would have the real question
-    # wrongly filtered out as chatter, leaving the preamble picked instead.
-    reply = "Sure, here's a broader question:\nWhat is I/O batching in dense retrieval?"
-    ctx = build_context(tiny_corpus, llm=FakeLLM(reply))
-    get_strategy("step-back").run("q", ctx)
-    assert ctx.trace.queries[1] == "What is I/O batching in dense retrieval?"
-
-
-def test_step_back_keeps_a_question_that_addresses_the_reader(tiny_corpus: Config):
-    # The chatter filter drops candidates that talk to the reader, but a
-    # legitimate general question can contain "you". When filtering would
-    # leave nothing, the unfiltered candidates are used instead.
-    ctx = build_context(tiny_corpus, llm=FakeLLM("How do you measure vector similarity?"))
-    get_strategy("step-back").run("q", ctx)
-    assert ctx.trace.queries[1] == "How do you measure vector similarity?"
 
 
 # --- retrieval depth vs top_k -------------------------------------------------

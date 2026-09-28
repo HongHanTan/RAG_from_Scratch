@@ -88,16 +88,24 @@ Reply with one query per line, numbered. No other text.
 Question: {question}"""
 
 
-STEP_BACK_TEMPLATE = """Given a specific question, write one more general
+STEP_BACK_SCHEMA = {
+    "type": "object",
+    "properties": {"question": {"type": "string"}},
+    "required": ["question"],
+}
+
+STEP_BACK_JSON_TEMPLATE = """Given a specific question, write one more general
 question about the underlying concept or principle it depends on.
 
 The general question should be broad enough that a document explaining the
 background would answer it, while staying on the same subject. Do not answer
 either question.
 
-Reply with the general question only, on one line.
+Reply with a JSON object: {{"question": "..."}}.
 
-Specific question: {question}"""
+Specific question: {question}
+
+JSON:"""
 
 
 _LIST_MARKER = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s*")
