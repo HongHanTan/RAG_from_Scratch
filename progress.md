@@ -445,3 +445,57 @@ record either.
 Being fixed before any number is reported: a partial index must announce itself and
 record the loss in `meta`, because an index quietly missing 5% of the corpus is
 exactly the "plausible nonsense, no error" failure `_index_meta` exists to prevent.
+
+### Blocked: Gemini daily quota exhausted mid-build
+
+The RAPTOR build ran 18:21–20:32 and exhausted the free-tier daily quota. A test
+call now returns `429 RESOURCE_EXHAUSTED`. The consequences are visible in the
+index and were, again, silent — the build was started by the pre-`df6a746` code,
+so nothing was recorded:
+
+| level | expected clusters | built | dropped |
+|---|---:|---:|---:|
+| 1 | 640 | 463 | 177 |
+| 2 | 58 | **0** | 58 |
+| 3 | 7 | **0** | 7 |
+
+**The tree is not a tree.** Level 2 produced zero nodes, so `build_raptor` hit its
+`if not level_chunks: break` and stopped. `data/index-raptor.npz` holds one flat
+layer of 463 summaries over the raw chunks, not the three-level hierarchy the spec
+asks for. The high-level demo needs the upper levels, so it cannot be run yet.
+
+Rebuild cost once quota resets: the 463 successful summaries are cached and free,
+leaving ~177 level-1 retries + ~80 level-2 + ~10 level-3 = **~267 calls, ~41 min**.
+
+### Measured so far (retrieval only, `direct`, no API needed)
+
+| index | nodes | Recall@20 | MRR@20 | nDCG@20 | DocPrec@5 |
+|---|---:|---:|---:|---:|---:|
+| flat | 5,116 | 0.325 | 0.103 | 0.137 | 0.560 |
+| multirep | 36 | 0.000 | 0.000 | 0.000 | 0.180 |
+| raptor (partial) | 5,579 | 0.325 | 0.094 | 0.133 | 0.500 |
+
+Flat reproduces its published baseline exactly, confirming the flat index is
+untouched.
+
+**Both multirep columns are artifacts, not results.** Recall@20 is 0.000 by
+construction: a summary node has no character span, so it can never satisfy a gold
+span. DocPrec@5 is structurally capped at 0.200, because the index holds exactly
+one node per document and at most one of the top 5 can be the gold document. The
+honest comparison is document-level, where a 142x smaller index nearly matches
+flat:
+
+| index | DocHit@1 | DocHit@5 | DocHit@20 | DocMRR |
+|---|---:|---:|---:|---:|
+| flat (5,116 nodes) | 0.600 | 1.000 | 1.000 | 0.775 |
+| multirep (36 nodes) | 0.600 | 0.900 | 0.900 | 0.708 |
+
+multirep's only miss is `cot-limits`, whose gold document is `ircot` — one of the
+two documents the silent-loss bug dropped. It is a build failure, not a retrieval
+failure, and should resolve on rebuild.
+
+**RAPTOR's summary nodes cost precision.** They take 10.0% of top-20 slots while
+being 8.3% of the index, and none can be credited by a span-based gold set. Recall
+is unchanged at 0.325 while MRR falls 0.103 -> 0.094 and DocPrec@5 falls 0.560 ->
+0.500. This is with the crippled single-level tree, so it is not yet a verdict on
+RAPTOR.
