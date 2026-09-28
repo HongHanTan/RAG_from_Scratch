@@ -206,3 +206,39 @@ def test_a_failed_save_does_not_destroy_the_existing_index(tmp_path):
     with pytest.raises(Exception):
         store.save(path)
     assert path.read_bytes() == good
+
+
+def _doc_meta():
+    return {"d": {"title": "T", "source": "arxiv", "topic": "foundations",
+                  "publish_date": "2020-01-01", "author": "A", "url": None}}
+
+
+def test_doc_meta_round_trips(tmp_path):
+    path = tmp_path / "index.npz"
+    store = _store(3)
+    store.doc_meta = _doc_meta()
+    store.save(path, meta=None)
+    assert VectorStore.load(path).doc_meta == _doc_meta()
+
+
+def test_doc_meta_defaults_to_empty(tmp_path):
+    path = tmp_path / "index.npz"
+    _store(2).save(path)
+    assert VectorStore.load(path).doc_meta == {}
+
+
+def test_an_index_written_without_doc_meta_still_loads(tmp_path):
+    # Indexes built before this field existed must not become unreadable.
+    import json
+    from dataclasses import asdict
+
+    path = tmp_path / "index.npz"
+    store = _store(2)
+    np.savez_compressed(
+        path,
+        vectors=store.vectors,
+        chunks=np.array(json.dumps([asdict(c) for c in store.chunks])),
+    )
+    loaded = VectorStore.load(path)
+    assert len(loaded) == 2
+    assert loaded.doc_meta == {}

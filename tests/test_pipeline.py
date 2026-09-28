@@ -171,3 +171,14 @@ def test_ask_without_generation_still_uses_the_llm_for_translation(
     assert len(llm.prompts) == 1
     assert trace.answer is None
     assert len(trace.queries) == 3
+
+
+def test_build_index_records_document_metadata(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder())
+    assert set(store.doc_meta) == {"alpha", "beta"}
+    assert store.doc_meta["alpha"]["title"] == "Cosine Similarity"
+
+
+def test_load_index_restores_document_metadata(tiny_corpus: Config):
+    build_index(tiny_corpus, FakeEmbedder())
+    assert load_index(tiny_corpus).doc_meta["beta"]["publish_date"] == "2024-02-11"

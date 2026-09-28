@@ -36,6 +36,13 @@ class VectorStore:
     vectors: np.ndarray       # (n_chunks, dim) float32, L2-normalised
     chunks: list[Chunk]
     meta: dict = field(default_factory=dict)
+    doc_meta: dict = field(default_factory=dict)
+    """Per-document metadata, keyed by doc_id.
+
+    Retrieval needs this to filter by author, date or topic, and a `Chunk`
+    knows only its `doc_id`. Persisting it in the index keeps `ask()` able to
+    filter from a reloaded index without also loading the corpus.
+    """
 
     def __post_init__(self) -> None:
         self.vectors = np.asarray(self.vectors, dtype=np.float32)
@@ -97,6 +104,7 @@ class VectorStore:
                     vectors=self.vectors,
                     chunks=np.array(payload),
                     meta=np.array(meta_payload),
+                    doc_meta=np.array(json.dumps(self.doc_meta, ensure_ascii=False)),
                 )
 
         write_atomic(path, _write)
@@ -117,6 +125,9 @@ class VectorStore:
             vectors = data["vectors"].astype(np.float32)
             chunks = [Chunk(**record) for record in json.loads(str(data["chunks"]))]
             meta = json.loads(str(data["meta"])) if "meta" in data.files else {}
+            doc_meta = (
+                json.loads(str(data["doc_meta"])) if "doc_meta" in data.files else {}
+            )
 
         if expect_meta and meta:
             differing = {
@@ -136,4 +147,5 @@ class VectorStore:
 
         store = cls(vectors=vectors, chunks=chunks)
         store.meta = meta
+        store.doc_meta = doc_meta
         return store

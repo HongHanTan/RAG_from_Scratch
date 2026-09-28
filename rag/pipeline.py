@@ -27,6 +27,17 @@ def build_index(config: Config, embedder) -> VectorStore:
     vectors = embedder.encode([chunk.text for chunk in chunks])
     store = VectorStore(vectors=vectors, chunks=chunks)
     store.meta = _index_meta(config, store.dim)
+    store.doc_meta = {
+        doc.doc_id: {
+            "title": doc.title,
+            "source": doc.source,
+            "topic": doc.topic,
+            "publish_date": doc.publish_date,
+            "author": doc.author,
+            "url": doc.url,
+        }
+        for doc in documents
+    }
     store.save(config.index_path, meta=store.meta)
     return store
 
