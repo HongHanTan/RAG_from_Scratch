@@ -118,6 +118,7 @@ class GeminiLLM:
         max_retries: int = 5,
         client: object | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        request_timeout: float = 30.0,
     ) -> None:
         if client is None and not api_key:
             raise LLMError(
@@ -136,7 +137,21 @@ class GeminiLLM:
             self._client = client
         else:
             from google import genai
-            self._client = genai.Client(api_key=api_key)
+            from google.genai import types
+
+            # A request timeout, because the failure that actually hurts is
+            # not a fast error but a hang. During a 503 overload the API can
+            # leave a call open for ten minutes; five retries of that is an
+            # hour for one summary, and a 730-call build never finishes.
+            # Failing fast lets the retry land in a window where the model is
+            # up, which -- when it is intermittently available -- is the
+            # difference between converging and stalling.
+            self._client = genai.Client(
+                api_key=api_key,
+                http_options=types.HttpOptions(
+                    timeout=int(request_timeout * 1000)  # milliseconds
+                ),
+            )
 
     def _cache_path(self, key: str) -> Path:
         return self.cache_dir / f"{key}.json"

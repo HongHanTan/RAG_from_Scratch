@@ -305,3 +305,31 @@ def test_structured_does_not_permanently_cache_a_shape_failure(tmp_path):
     )
     assert second.structured("p", SCHEMA) == {"topics": ["a"]}
     assert second.call_count == 1
+
+
+def test_a_request_timeout_is_configured_on_the_real_client():
+    # The failure that hurts during an overload is a hang, not an error:
+    # the API can hold a call open for ten minutes, and five retries of that
+    # is an hour for one summary. Without a timeout a long build stalls
+    # instead of converging.
+    from pathlib import Path
+
+    from google.genai import types
+
+    from rag.llm import GeminiLLM
+
+    llm = GeminiLLM(
+        model="m", api_key="k", cache_dir=Path("."), request_timeout=12.0
+    )
+    options = llm._client._api_client._http_options
+    assert isinstance(options, types.HttpOptions)
+    assert options.timeout == 12000  # milliseconds
+
+
+def test_the_timeout_defaults_to_thirty_seconds():
+    from pathlib import Path
+
+    from rag.llm import GeminiLLM
+
+    llm = GeminiLLM(model="m", api_key="k", cache_dir=Path("."))
+    assert llm._client._api_client._http_options.timeout == 30000
