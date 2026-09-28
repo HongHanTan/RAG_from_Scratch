@@ -69,7 +69,14 @@ from rag.store import VectorStore
 from rag.strategies import STRATEGY_NAMES
 from rag.trace import Trace
 
-DEGRADED = "degraded to direct retrieval"
+DEGRADED = "degraded"
+"""Every degradation path in `rag/` includes this word deliberately -- a
+strategy falling back to plain retrieval, logical routing falling back to
+searching everything, or query construction falling back to no filter. One
+check on the single word covers strategies, routing and query construction
+alike; matching only the full phrase "degraded to direct retrieval" would let
+a silent routing or filtering failure through uncounted, and the benchmark
+would report "routing does not help" when the real story is "routing broke"."""
 
 # The answer prompt's real top_k, independent of the chunk metrics' cutoff.
 DOC_PRECISION_K = 5
@@ -119,7 +126,7 @@ class _CallCountingLLM:
 
 
 def check_not_degraded(trace: Trace) -> None:
-    """Fail loudly if a strategy silently fell back to plain retrieval."""
+    """Fail loudly if any stage silently fell back to a safe default."""
     for note in trace.notes:
         if DEGRADED in note:
             raise RuntimeError(

@@ -182,3 +182,69 @@ def test_build_index_records_document_metadata(tiny_corpus: Config):
 def test_load_index_restores_document_metadata(tiny_corpus: Config):
     build_index(tiny_corpus, FakeEmbedder())
     assert load_index(tiny_corpus).doc_meta["beta"]["publish_date"] == "2024-02-11"
+
+
+# --- routing and query construction wiring -----------------------------------
+
+def test_ask_without_routing_or_construction_is_unchanged(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder())
+    trace = ask("q", store, FakeEmbedder(), FakeLLM(), tiny_corpus)
+    assert trace.retrieved
+    assert not any(s.kind in ("route", "filter") for s in trace.translation)
+
+
+def test_ask_with_construction_records_a_filter(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder())
+    llm = FakeLLM('{"published_before": "2024-01-01"}')
+    trace = ask("before 2024?", store, FakeEmbedder(), llm, tiny_corpus, construct=True)
+    assert any(s.kind == "filter" for s in trace.translation)
+
+
+def test_construction_restricts_what_is_retrieved(tiny_corpus: Config):
+    # tiny_corpus: alpha is 2023-05-01, beta is 2024-02-11.
+    store = build_index(tiny_corpus, FakeEmbedder())
+    llm = FakeLLM('{"published_before": "2024-01-01"}')
+    trace = ask("q", store, FakeEmbedder(), llm, tiny_corpus, construct=True)
+    assert trace.retrieved
+    assert all(r.chunk.doc_id == "alpha" for r in trace.retrieved)
+
+
+def test_a_filter_matching_nothing_leaves_a_note_and_no_results(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder())
+    llm = FakeLLM('{"published_before": "1900-01-01"}')
+    trace = ask("q", store, FakeEmbedder(), llm, tiny_corpus, construct=True)
+    assert trace.retrieved == []
+    assert any("filter" in n.lower() for n in trace.notes)
+
+
+def test_ask_with_routing_records_a_route(tiny_corpus: Config):
+    # The tiny fixture corpus has no topics, so give it two: routing is
+    # skipped entirely when there is nothing to choose between.
+    store = build_index(tiny_corpus, FakeEmbedder())
+    store.doc_meta["alpha"]["topic"] = "similarity"
+    store.doc_meta["beta"]["topic"] = "fusion"
+    llm = FakeLLM('{"topics": ["similarity"]}')
+    trace = ask("q", store, FakeEmbedder(), llm, tiny_corpus, route=True)
+    assert any(s.kind == "route" for s in trace.translation)
+
+
+def test_routing_is_skipped_when_the_corpus_has_no_topics(tiny_corpus: Config):
+    # Nothing to route between is not a failure, and must not cost an LLM call.
+    # generate=False isolates that claim to routing itself -- answer
+    # generation is a separate, unconditional LLM call the moment an LLM is
+    # given at all, and asserting it away here would conflate the two.
+    store = build_index(tiny_corpus, FakeEmbedder())
+    llm = FakeLLM('{"topics": ["anything"]}')
+    trace = ask(
+        "q", store, FakeEmbedder(), llm, tiny_corpus, route=True, generate=False
+    )
+    assert not any(s.kind == "route" for s in trace.translation)
+    assert llm.prompts == []
+
+
+def test_semantic_prompt_selection_records_its_choice(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder())
+    trace = ask(
+        "q", store, FakeEmbedder(), FakeLLM(), tiny_corpus, semantic_prompt=True
+    )
+    assert any(s.kind == "route" and "prompt" in s.text for s in trace.translation)

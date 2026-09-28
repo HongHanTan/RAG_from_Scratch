@@ -12,6 +12,9 @@ from rag.chunking import chunk_documents
 from rag.config import Config
 from rag.generation import generate_answer
 from rag.loader import load_documents
+from rag.prompts import PROMPT_EXEMPLARS
+from rag.query_construction import MetadataFilter, build_filter, compile_mask
+from rag.routing import SemanticRouter, logical_route
 from rag.store import VectorStore
 from rag.strategies import get_strategy
 from rag.strategies.base import StrategyContext
@@ -76,17 +79,62 @@ def ask(
     strategy: str = "direct",
     strategy_options: dict | None = None,
     generate: bool = True,
+    route: bool = False,
+    construct: bool = False,
+    semantic_prompt: bool = False,
 ) -> Trace:
     """Answer one question. Pass llm=None to retrieve without generating.
 
-    The named strategy decides what to retrieve; everything after that is the
-    same for all of them.
+    The data flow is route, then construct, then translate, then search: a
+    logical route narrows the topic before query construction adds its own
+    constraints, and both run before the strategy translates the question and
+    searches. The named strategy decides what to retrieve; everything after
+    that is the same for all of them.
     """
     trace = Trace(question=question)
     trace.strategy = strategy
     effective_k = config.top_k if k is None else k
 
-    chosen = get_strategy(strategy, **(strategy_options or {}))
+    topics = tuple(
+        sorted({r.get("topic") for r in store.doc_meta.values() if r.get("topic")})
+    )
+
+    active = MetadataFilter()
+    if route and topics:
+        # Nothing to route between is not a failure and must not cost an LLM
+        # call, so routing is skipped entirely when the corpus has no topics.
+        chosen = logical_route(question, llm, topics, trace)
+        if chosen:
+            active = MetadataFilter(topics=chosen)
+    if construct:
+        inferred = build_filter(question, llm, topics, trace)
+        if not inferred.is_empty():
+            # Routing narrows by topic; construction adds its own constraints.
+            # Keep the routed topics unless construction named its own.
+            active = MetadataFilter(
+                topics=inferred.topics or active.topics,
+                authors=inferred.authors,
+                published_before=inferred.published_before,
+                published_after=inferred.published_after,
+            )
+
+    mask = None
+    if not active.is_empty():
+        mask = compile_mask(active, store.chunks, store.doc_meta)
+        if not mask.any():
+            # A filter matching nothing must return no results rather than
+            # silently falling back to unfiltered search, which would answer
+            # a filtered question from the whole corpus.
+            trace.note(
+                f"filter matched no documents ({active.describe()}); "
+                "returning no results"
+            )
+
+    prompt_name = None
+    if semantic_prompt:
+        prompt_name = SemanticRouter(embedder, PROMPT_EXEMPLARS).route(question, trace)
+
+    chosen_strategy = get_strategy(strategy, **(strategy_options or {}))
     ctx = StrategyContext(
         store=store,
         embedder=embedder,
@@ -97,8 +145,9 @@ def ask(
             retrieval_depth=max(config.retrieval_depth, effective_k),
         ),
         trace=trace,
+        mask=mask,
     )
-    result = chosen.run(question, ctx)
+    result = chosen_strategy.run(question, ctx)
     trace.retrieved = result.retrieved
 
     if llm is None:
@@ -112,6 +161,11 @@ def ask(
         return trace
 
     generate_answer(
-        llm, question, result.retrieved, trace, extra_context=result.extra_context
+        llm,
+        question,
+        result.retrieved,
+        trace,
+        extra_context=result.extra_context,
+        prompt_name=prompt_name,
     )
     return trace

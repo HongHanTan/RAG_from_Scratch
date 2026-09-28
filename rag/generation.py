@@ -14,14 +14,20 @@ def generate_answer(
     retrieved: list[RetrievedChunk],
     trace: Trace,
     extra_context: str | None = None,
+    prompt_name: str | None = None,
 ) -> str | None:
     """Generate an answer, recording prompt, answer and timing on the trace.
 
     Returns None and records a note if the model call fails. Retrieval already
     succeeded at this point, so the trace is still worth showing — failing hard
     would throw away the useful half of the result.
+
+    `prompt_name` selects a prompt variant (from semantic routing); None uses
+    the default answer template.
     """
-    prompt = build_answer_prompt(question, retrieved, extra_context=extra_context)
+    prompt = build_answer_prompt(
+        question, retrieved, extra_context=extra_context, prompt_name=prompt_name
+    )
     trace.prompt = prompt
     with trace.stage("generate"):
         try:

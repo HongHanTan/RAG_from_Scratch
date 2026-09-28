@@ -298,3 +298,32 @@ def test_score_strategy_resolves_gold_spans_against_the_stores_own_chunks():
 
     assert seen_chunk_lists
     assert all(chunks is store.chunks for chunks in seen_chunk_lists)
+
+
+# --- widened degradation check ------------------------------------------------
+
+def test_any_degraded_note_is_fatal():
+    # Phase 4 adds routing and filtering, each with its own degradation
+    # wording. Scanning only for "degraded to direct retrieval" would let a
+    # silent routing failure be measured as "routing does not help".
+    from evaluation.benchmark import check_not_degraded
+    from rag.trace import Trace
+
+    for note in [
+        "hyde needs an LLM; degraded to direct retrieval",
+        "logical routing failed: rate limited; degraded to searching everything",
+        "query construction failed: bad JSON; degraded to no filter",
+    ]:
+        trace = Trace(question="q")
+        trace.note(note)
+        with pytest.raises(RuntimeError, match="degraded"):
+            check_not_degraded(trace)
+
+
+def test_a_non_degradation_note_is_not_fatal():
+    from evaluation.benchmark import check_not_degraded
+    from rag.trace import Trace
+
+    trace = Trace(question="q")
+    trace.note("generation served from cache")
+    check_not_degraded(trace)

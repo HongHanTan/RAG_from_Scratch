@@ -51,7 +51,9 @@ def logical_route(
 
     chosen = tuple(t for t in parsed.get("topics", []) if t in topics)
     if not chosen:
-        trace.note("logical routing chose nothing valid; searching everything")
+        trace.note(
+            "logical routing chose nothing valid; degraded to searching everything"
+        )
         return ()
     trace.add_translation("route", f"search {', '.join(chosen)}")
     return chosen

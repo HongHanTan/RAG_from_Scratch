@@ -131,6 +131,14 @@ class FakeLLM:
         self.prompts.append(prompt)
         return self.response
 
+    def structured(self, prompt: str, schema: dict) -> dict:
+        # Shares GeminiLLM's own parsing/shape-checking so routing and query
+        # construction tests can hand this a canned JSON reply directly,
+        # rather than reimplementing that logic in a second fake.
+        from rag.llm import GeminiLLM
+
+        return GeminiLLM.structured(self, prompt, schema)
+
 
 @pytest.fixture
 def fake_embedder() -> FakeEmbedder:

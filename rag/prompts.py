@@ -48,12 +48,17 @@ def build_answer_prompt(
     question: str,
     retrieved: list[RetrievedChunk],
     extra_context: str | None = None,
+    prompt_name: str | None = None,
 ) -> str:
     """Fill the answer template.
 
     `extra_context` holds text the strategy derived (decomposition's
     sub-answers). It is labelled separately from the retrieved excerpts so the
     model does not cite generated text as though it were a source.
+
+    `prompt_name` selects a variant from `PROMPT_VARIANTS` (set by semantic
+    routing); `None` or a name not in `PROMPT_VARIANTS` falls back to the
+    default `ANSWER_TEMPLATE`.
 
     Chunk text may contain braces; it is not re-formatted, only inserted after
     `str.format` has already scanned the template, so `{}` in a document
@@ -66,7 +71,8 @@ def build_answer_prompt(
             f"Working notes (derived from the excerpts above, not a source — "
             f"do not cite these):\n{extra_context}"
         )
-    return ANSWER_TEMPLATE.format(context=context, question=question)
+    template = PROMPT_VARIANTS.get(prompt_name, ANSWER_TEMPLATE)
+    return template.format(context=context, question=question)
 
 
 MULTI_QUERY_TEMPLATE = """You are helping a search system find relevant documents.
