@@ -230,7 +230,7 @@
       "publish_date": "2019-06-01",
       "author": "Lee et al.",
       "url": "https://ar5iv.labs.arxiv.org/html/1906.00300",
-      "topic": "evaluation-benchmarks"
+      "topic": "retrieval-models"
     },
     "rankgpt": {
       "title": "Is ChatGPT Good at Search? Investigating LLMs as Re-Ranking Agents",

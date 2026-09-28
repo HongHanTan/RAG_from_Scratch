@@ -269,3 +269,21 @@ Plan: [docs/superpowers/plans/2026-09-28-phase-4-routing-and-query-construction.
 | 8 | Pipeline wiring | ⬜ | | widens the benchmark degradation check |
 | 9 | CLI, step-back via structured output, README | ⬜ | | deletes the prose heuristics |
 | — | Final whole-branch review | ⬜ | | |
+
+### Phase 4 carried items
+
+- **Task 1, IMPORTANT — queued fix.** `natural_questions` is classified
+  `evaluation-benchmarks`, but the document is Lee et al.'s ORQA paper, "Latent
+  Retrieval for Weakly Supervised Open Domain Question Answering" — it *proposes* a
+  retrieval method (pre-training a retriever with an Inverse Cloze Task), and belongs
+  in `retrieval-models` beside DPR and Contriever, which it precedes methodologically.
+  Confirmed by reading the document. The `doc_id` is a Phase 1 misnomer: the title was
+  verified against the content back then and matched, but nothing ever checked the
+  *filename* against the content, and the name is what misled the classification.
+  Moving it gives 9/10/9/8/7, still under half. Requires an index rebuild, so queued
+  behind Tasks 3-5.
+- **Task 1, Minor (leave)** — `hyde` sits in `prompting-reasoning` though it produces
+  embeddings for dense retrieval. Defensible: the bucket means "LLM-prompted query
+  transformation" alongside step-back and query-rewriting, not "retrieval model
+  families". `rankgpt` in `evaluation-benchmarks` is similarly borderline and similarly
+  acceptable.
