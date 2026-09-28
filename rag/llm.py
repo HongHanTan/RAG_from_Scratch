@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from pathlib import Path
 from typing import Callable
@@ -20,6 +21,54 @@ from typing import Callable
 
 class LLMError(Exception):
     """Raised when the model cannot be reached or returns nothing usable."""
+
+
+_JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _extract_json_object(text: str) -> str:
+    """Pull the JSON object out of a reply that may be wrapped in prose.
+
+    Models add ```json fences and conversational padding whatever the prompt
+    says. Parsing the first balanced-looking object is more robust than
+    trusting the instruction, and this is the whole reason structured output
+    is worth having over prose parsing.
+    """
+    match = _JSON_OBJECT.search(text)
+    return match.group(0) if match else text
+
+
+_TYPES = {
+    "object": dict,
+    "array": list,
+    "string": str,
+    "integer": int,
+    "number": (int, float),
+    "boolean": bool,
+}
+
+
+def _check_shape(value: dict, schema: dict) -> None:
+    """Validate a parsed object against a small subset of JSON Schema.
+
+    Only what this project's schemas use: a top-level object, `required`
+    keys, and one-level `type` checks on properties. Written out rather than
+    pulling in jsonschema, which is not on the dependency list.
+    """
+    if not isinstance(value, dict):
+        raise LLMError(f"expected a JSON object, got {type(value).__name__}")
+    for key in schema.get("required", []):
+        if key not in value:
+            raise LLMError(f"missing required field in model reply: {key}")
+    for key, spec in schema.get("properties", {}).items():
+        if key not in value:
+            continue
+        expected = _TYPES.get(spec.get("type"))
+        if expected and not isinstance(value[key], expected):
+            raise LLMError(
+                f"field {key} should be {spec['type']}, "
+                f"got {type(value[key]).__name__}"
+            )
 
 
 def cache_key(model: str, prompt: str, temperature: float) -> str:
@@ -115,3 +164,21 @@ class GeminiLLM:
         raise LLMError(
             f"gave up after {self.max_retries} attempts: {last_error}"
         ) from last_error
+
+    def structured(self, prompt: str, schema: dict) -> dict:
+        """Return a parsed, shape-checked JSON object from the model.
+
+        Shares `generate`'s cache, retry and backoff. Raises LLMError when the
+        reply cannot be parsed or does not match the schema — callers are
+        expected to catch that and fall back to a safe default, because a
+        routing or filtering step that fails should not lose the answer.
+        """
+        raw = self.generate(prompt)
+        try:
+            parsed = json.loads(_extract_json_object(raw))
+        except json.JSONDecodeError as exc:
+            raise LLMError(
+                f"model reply was not valid JSON: {exc}; got {raw[:120]!r}"
+            ) from exc
+        _check_shape(parsed, schema)
+        return parsed

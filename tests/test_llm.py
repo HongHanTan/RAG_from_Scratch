@@ -175,3 +175,64 @@ def test_empty_response_is_an_error(tmp_path):
 def test_missing_api_key_is_rejected_at_construction(tmp_path):
     with pytest.raises(LLMError, match="GOOGLE_API_KEY"):
         GeminiLLM(model="m", api_key=None, cache_dir=tmp_path)
+
+
+# --- structured output --------------------------------------------------------
+
+SCHEMA = {
+    "type": "object",
+    "properties": {
+        "topics": {"type": "array", "items": {"type": "string"}},
+        "reason": {"type": "string"},
+    },
+    "required": ["topics"],
+}
+
+
+def test_structured_parses_a_json_object(tmp_path):
+    llm = _llm(tmp_path, ['{"topics": ["a", "b"], "reason": "because"}'])
+    assert llm.structured("p", SCHEMA) == {"topics": ["a", "b"], "reason": "because"}
+
+
+def test_structured_tolerates_a_fenced_code_block(tmp_path):
+    # Models wrap JSON in ```json fences regardless of instructions.
+    reply = '```json\n{"topics": ["a"]}\n```'
+    llm = _llm(tmp_path, [reply])
+    assert llm.structured("p", SCHEMA) == {"topics": ["a"]}
+
+
+def test_structured_tolerates_surrounding_prose(tmp_path):
+    reply = 'Here is the result:\n{"topics": ["a"]}\nHope that helps!'
+    llm = _llm(tmp_path, [reply])
+    assert llm.structured("p", SCHEMA) == {"topics": ["a"]}
+
+
+def test_structured_rejects_unparseable_json(tmp_path):
+    llm = _llm(tmp_path, ["not json at all"], max_retries=1)
+    with pytest.raises(LLMError, match="JSON"):
+        llm.structured("p", SCHEMA)
+
+
+def test_structured_rejects_a_missing_required_field(tmp_path):
+    llm = _llm(tmp_path, ['{"reason": "no topics here"}'], max_retries=1)
+    with pytest.raises(LLMError, match="topics"):
+        llm.structured("p", SCHEMA)
+
+
+def test_structured_rejects_a_non_object(tmp_path):
+    llm = _llm(tmp_path, ['["a", "b"]'], max_retries=1)
+    with pytest.raises(LLMError, match="object"):
+        llm.structured("p", SCHEMA)
+
+
+def test_structured_rejects_a_wrongly_typed_field(tmp_path):
+    llm = _llm(tmp_path, ['{"topics": "a"}'], max_retries=1)
+    with pytest.raises(LLMError, match="topics"):
+        llm.structured("p", SCHEMA)
+
+
+def test_structured_uses_the_same_cache_as_generate(tmp_path):
+    llm = _llm(tmp_path, ['{"topics": ["a"]}'])
+    llm.structured("p", SCHEMA)
+    llm.structured("p", SCHEMA)
+    assert llm.call_count == 1
