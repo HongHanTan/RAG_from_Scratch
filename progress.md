@@ -249,3 +249,23 @@ found none, verifying each suspect empirically rather than by argument.
   after) — what created headroom was measuring at k=20 and adding the document metric.
 
 All four score columns are byte-identical before and after every fix.
+
+---
+
+# Phase 4 — Routing and Query Construction: Progress
+
+Branch: `phase-4-routing` (stacked on `phase-3-evaluation`; none merged to `main`)
+Plan: [docs/superpowers/plans/2026-09-28-phase-4-routing-and-query-construction.md](docs/superpowers/plans/2026-09-28-phase-4-routing-and-query-construction.md)
+
+| # | Task | Status | Commits | Notes |
+|---|------|--------|---------|-------|
+| 1 | Topic metadata | ⬜ | | corpus has one source; nothing to route between |
+| 2 | Index carries document metadata | ⬜ | | needed for author/date masks |
+| 3 | Structured output on the LLM | ⬜ | | |
+| 4 | MetadataFilter + mask compilation | ⬜ | | |
+| 5 | Apply the mask before top-k | ⬜ | | |
+| 6 | Query construction | ⬜ | | |
+| 7 | Logical + semantic routing | ⬜ | | |
+| 8 | Pipeline wiring | ⬜ | | widens the benchmark degradation check |
+| 9 | CLI, step-back via structured output, README | ⬜ | | deletes the prose heuristics |
+| — | Final whole-branch review | ⬜ | | |
