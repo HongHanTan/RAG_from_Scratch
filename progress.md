@@ -264,11 +264,26 @@ Plan: [docs/superpowers/plans/2026-09-28-phase-4-routing-and-query-construction.
 | 3 | Structured output on the LLM | ✅ | `f2298e7` | |
 | 4 | MetadataFilter + mask compilation | ✅ | `c7518c2` | |
 | 5 | Apply the mask before top-k | ✅ | `02a55d0` | 495 tests; k results, not survivors | |
-| 6 | Query construction | 🔄 | | |
-| 7 | Logical + semantic routing | 🔄 | | |
-| 8 | Pipeline wiring | ⬜ | | widens the benchmark degradation check |
+| 6 | Query construction | ✅ | `9204195` | | |
+| 7 | Logical + semantic routing | ✅ | `8176111` | | |
+| 8 | Pipeline wiring | 🔄 | | widens the benchmark degradation check |
 | 9 | CLI, step-back via structured output, README | ⬜ | | deletes the prose heuristics |
 | — | Final whole-branch review | ⬜ | | |
+
+### Semantic routing: descriptions lose to exemplars
+
+Measured over nine questions with known intent, routing by cosine against short
+*descriptions of question types* got 5/9 right — "What is late interaction?" and
+"Define reciprocal rank fusion." both routed to `comparison`. The descriptions are
+not the problem: they sit 0.18-0.38 cosine apart, comfortably separated.
+
+The problem is what is being compared. Matching a question against a description of
+a question *type* asks the embedder for intent; MiniLM embeds topic. Replacing the
+descriptions with **exemplar questions** ("What is X? What does X mean? Define X.")
+matches question-shaped text against question-shaped text and scores **7/9**.
+
+That is the same insight HyDE rests on — embed something shaped like what you are
+searching for — applied to routing rather than retrieval. Folded into Task 8.
 
 ### Phase 4 carried items
 
