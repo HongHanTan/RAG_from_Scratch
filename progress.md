@@ -268,7 +268,7 @@ Plan: [docs/superpowers/plans/2026-09-28-phase-4-routing-and-query-construction.
 | 7 | Logical + semantic routing | ✅ | `8176111` | | |
 | 8 | Pipeline wiring | ✅ | `6ae4a12`, `d4f415d` | 527 tests; exemplar routing 7/9 | | widens the benchmark degradation check |
 | 9 | CLI, step-back via structured output, README | ✅ | `396d98e`..`2eb8b46` | 519 tests (8 prose tests deleted) | | deletes the prose heuristics |
-| — | Final whole-branch review | 🔄 | | |
+| — | Final whole-branch review | ✅ | `0b21186`..`82f677c` | 4 Important fixed; routing measured; 543 tests |
 
 ### Semantic routing: descriptions lose to exemplars
 
@@ -354,3 +354,46 @@ retrieval difference is worth a parsing path that cannot silently pick the wrong
   transformation" alongside step-back and query-rewriting, not "retrieval model
   families". `rankgpt` in `evaluation-benchmarks` is similarly borderline and similarly
   acceptable.
+
+### Phase 4 final review — resolved
+
+Verdict was "merge after fixes". Four Important, all fixed and verified.
+
+- **`GeminiLLM.structured` poisoned its own cache permanently.** It cached the reply
+  *before* validating it, so a malformed response was written under a deterministic
+  key and re-read forever — reproduced across a fresh client making zero API calls.
+  With the `degraded` sentinel now fatal, one bad reply would have aborted the
+  benchmark permanently until someone cleared `.cache/` by hand. Fixed by evicting the
+  entry on validation failure.
+- **The sentinel was missed five times, by four authors**, including in a file whose
+  own docstring promised it. Now mechanical: `Trace.degraded(what, fallback)` writes
+  the word, `benchmark.py` imports the same constant instead of restating it, and an
+  AST test walks every `.note()` call in `rag/` against a three-entry allowlist with
+  written reasons. Six sites converted.
+- **Routing shipped unmeasured — my error.** The plan promised a `--route` benchmark
+  column; the final task's dispatch (which I wrote) asked instead for a paragraph
+  explaining its absence. The gold set measures routing for free: every question names
+  a `doc_id`, every document carries a `topic`.
+- **`SemanticRouter` was rebuilt per question**, re-embedding its exemplars on every
+  call while its docstring claimed otherwise.
+
+### Does routing help? Measured: no.
+
+| Recall | Abstention | Mean topics chosen | Available | Questions |
+|---:|---:|---:|---:|---:|
+| 0.900 | 0.000 | 1.30 | 5 | 10 |
+
+The router is not gaming the metric: it never abstains and picks 1.3 topics of 5, so
+0.900 is real narrowing that mostly finds the right collection.
+
+End to end it still does not pay. Mean Recall@20 across the six strategies falls from
+0.394 to 0.378 with `--route`: up for `hyde`, flat for two, down for three. On a corpus
+of 5,116 chunks, plain top-k already finds most answers, so the one question in ten
+where a 90%-accurate router excludes the right topic costs more than narrowing saves.
+
+**The single miss is probably my labelling, not the router.** `longcontext-position`
+asks "does it matter where in a long prompt the relevant passage sits?"; the gold
+document is `lost_in_middle`, which I filed under `evaluation-benchmarks`, and the
+router chose `prompting-reasoning` — a defensible reading. Deliberately **not**
+reclassified: changing the partition after seeing which question the router missed is
+fitting labels to the metric, which is worse than an honestly earned 0.900.
