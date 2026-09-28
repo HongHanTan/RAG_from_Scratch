@@ -323,11 +323,12 @@ def test_strategy_flag_reaches_the_pipeline(tiny_corpus, monkeypatch, capsys):
     real_ask = __import__("rag.__main__", fromlist=["ask"]).ask
 
     def spy(question, store, embedder, llm, config, k=None, strategy="direct",
-            strategy_options=None):
+            strategy_options=None, **kwargs):
         seen["strategy"] = strategy
         seen["options"] = strategy_options
         return real_ask(question, store, embedder, llm, config, k=k,
-                        strategy=strategy, strategy_options=strategy_options)
+                        strategy=strategy, strategy_options=strategy_options,
+                        **kwargs)
 
     monkeypatch.setattr("rag.__main__.ask", spy)
     assert main(["ask", "q", "--strategy", "direct"], **_factories()) == 0
@@ -342,7 +343,7 @@ def test_decomposition_mode_is_passed_as_a_strategy_option(
     seen = {}
 
     def spy(question, store, embedder, llm, config, k=None, strategy="direct",
-            strategy_options=None):
+            strategy_options=None, **kwargs):
         seen["options"] = strategy_options
         from rag.trace import Trace
 
@@ -385,7 +386,7 @@ def test_decomposition_mode_defaults_to_recursive_when_not_passed(
     seen = {}
 
     def spy(question, store, embedder, llm, config, k=None, strategy="direct",
-            strategy_options=None):
+            strategy_options=None, **kwargs):
         seen["options"] = strategy_options
         from rag.trace import Trace
 
@@ -539,3 +540,36 @@ def test_nested_timings_are_indented_in_verbose_output():
     output = format_trace(trace, verbose=True)
     assert "  embed" in output
     assert "5.0" in output
+
+
+# --- route / construct / semantic-prompt flags -------------------------------
+
+def test_route_flag_reaches_the_pipeline(tiny_corpus, monkeypatch, capsys):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+    seen = {}
+
+    def spy(question, store, embedder, llm, config, **kwargs):
+        seen.update(kwargs)
+        from rag.trace import Trace
+
+        return Trace(question=question)
+
+    monkeypatch.setattr("rag.__main__.ask", spy)
+    main(["ask", "q", "--route", "--construct"], **_factories())
+    assert seen["route"] is True
+    assert seen["construct"] is True
+
+
+def test_routing_flags_are_rejected_without_an_llm(tiny_corpus, monkeypatch, capsys):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+    assert main(["ask", "q", "--route", "--no-llm"], **_factories()) == 1
+    assert "--no-llm" in capsys.readouterr().err
+
+
+def test_semantic_prompt_is_allowed_without_an_llm(tiny_corpus, monkeypatch):
+    # Semantic routing is embedding-only; it needs no API key.
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+    assert main(["ask", "q", "--semantic-prompt", "--no-llm"], **_factories()) == 0

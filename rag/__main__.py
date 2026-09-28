@@ -137,6 +137,18 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="show the queries the strategy generated",
     )
+    ask_parser.add_argument(
+        "--route", action="store_true",
+        help="let the model choose which topical collections to search",
+    )
+    ask_parser.add_argument(
+        "--construct", action="store_true",
+        help="infer a metadata filter from the question",
+    )
+    ask_parser.add_argument(
+        "--semantic-prompt", action="store_true",
+        help="pick the answer prompt by embedding similarity (no LLM call)",
+    )
 
     return parser
 
@@ -180,6 +192,22 @@ def _run(args, embedder_factory, llm_factory) -> int:
             f"{args.strategy} needs the LLM to rewrite the question, so it "
             "would silently fall back to direct retrieval. Use --strategy "
             "direct, or drop --no-llm."
+        )
+
+    if args.command == "ask" and args.no_llm and args.route:
+        raise ValueError(
+            "--no-llm cannot be combined with --route: logical routing needs "
+            "the LLM to choose which collections to search, so it would "
+            "silently fall back to searching everything. Drop --route, or "
+            "drop --no-llm."
+        )
+
+    if args.command == "ask" and args.no_llm and args.construct:
+        raise ValueError(
+            "--no-llm cannot be combined with --construct: query "
+            "construction needs the LLM to infer a metadata filter, so it "
+            "would silently fall back to no filter. Drop --construct, or "
+            "drop --no-llm."
         )
 
     if (
@@ -239,6 +267,9 @@ def _run(args, embedder_factory, llm_factory) -> int:
         k=args.k,
         strategy=args.strategy,
         strategy_options=strategy_options,
+        route=args.route,
+        construct=args.construct,
+        semantic_prompt=args.semantic_prompt,
     )
     print(format_trace(trace, verbose=args.trace, show_queries=args.queries))
     return 0
