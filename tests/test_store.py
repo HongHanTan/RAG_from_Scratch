@@ -293,3 +293,35 @@ def test_a_mask_of_the_wrong_length_is_rejected():
     query = np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
     with pytest.raises(ValueError, match="mask"):
         store.search(query, 3, mask=np.ones(2, dtype=bool))
+
+
+def test_docstore_round_trips(tmp_path):
+    path = tmp_path / "index.npz"
+    store = _store(2)
+    store.docstore = {"d": "the full document text"}
+    store.save(path)
+    assert VectorStore.load(path).docstore == {"d": "the full document text"}
+
+
+def test_docstore_defaults_to_empty(tmp_path):
+    path = tmp_path / "index.npz"
+    _store(2).save(path)
+    assert VectorStore.load(path).docstore == {}
+
+
+def test_an_index_written_without_a_docstore_still_loads(tmp_path):
+    # Every index built before multi-representation existed -- including the
+    # real 5,116-chunk flat index -- has no docstore key, and must still load.
+    import json
+    from dataclasses import asdict
+
+    path = tmp_path / "index.npz"
+    store = _store(2)
+    np.savez_compressed(
+        path,
+        vectors=store.vectors,
+        chunks=np.array(json.dumps([asdict(c) for c in store.chunks])),
+    )
+    loaded = VectorStore.load(path)
+    assert len(loaded) == 2
+    assert loaded.docstore == {}

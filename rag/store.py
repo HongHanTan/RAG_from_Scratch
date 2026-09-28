@@ -44,6 +44,14 @@ class VectorStore:
     filter from a reloaded index without also loading the corpus.
     """
 
+    docstore: dict = field(default_factory=dict)
+    """Full document text by doc_id, for multi-representation indexing.
+
+    That technique embeds a summary and retrieves on it, then hands the whole
+    document to the generator — so the document text has to travel with the
+    index, not be re-read from the corpus at query time.
+    """
+
     def __post_init__(self) -> None:
         self.vectors = np.asarray(self.vectors, dtype=np.float32)
         if self.vectors.ndim != 2:
@@ -128,6 +136,7 @@ class VectorStore:
                     chunks=np.array(payload),
                     meta=np.array(meta_payload),
                     doc_meta=np.array(json.dumps(self.doc_meta, ensure_ascii=False)),
+                    docstore=np.array(json.dumps(self.docstore, ensure_ascii=False)),
                 )
 
         write_atomic(path, _write)
@@ -151,6 +160,9 @@ class VectorStore:
             doc_meta = (
                 json.loads(str(data["doc_meta"])) if "doc_meta" in data.files else {}
             )
+            docstore = (
+                json.loads(str(data["docstore"])) if "docstore" in data.files else {}
+            )
 
         if expect_meta and meta:
             differing = {
@@ -171,4 +183,5 @@ class VectorStore:
         store = cls(vectors=vectors, chunks=chunks)
         store.meta = meta
         store.doc_meta = doc_meta
+        store.docstore = docstore
         return store
