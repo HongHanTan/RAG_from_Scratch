@@ -259,11 +259,11 @@ Plan: [docs/superpowers/plans/2026-09-28-phase-4-routing-and-query-construction.
 
 | # | Task | Status | Commits | Notes |
 |---|------|--------|---------|-------|
-| 1 | Topic metadata | ⬜ | | corpus has one source; nothing to route between |
-| 2 | Index carries document metadata | ⬜ | | needed for author/date masks |
-| 3 | Structured output on the LLM | ⬜ | | |
-| 4 | MetadataFilter + mask compilation | ⬜ | | |
-| 5 | Apply the mask before top-k | ⬜ | | |
+| 1 | Topic metadata | ✅ | `f3cec5b` | 9/9/8/8/4 across five topics |
+| 2 | Index carries document metadata | ✅ | `e4799f2` | 461 tests; index rebuilt |
+| 3 | Structured output on the LLM | 🔄 | | |
+| 4 | MetadataFilter + mask compilation | 🔄 | | |
+| 5 | Apply the mask before top-k | 🔄 | | |
 | 6 | Query construction | ⬜ | | |
 | 7 | Logical + semantic routing | ⬜ | | |
 | 8 | Pipeline wiring | ⬜ | | widens the benchmark degradation check |
