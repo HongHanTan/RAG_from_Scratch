@@ -64,7 +64,12 @@ def _check_shape(value: dict, schema: dict) -> None:
         if key not in value:
             continue
         expected = _TYPES.get(spec.get("type"))
-        if expected and not isinstance(value[key], expected):
+        # bool is a subclass of int, so isinstance(True, int) is True; without
+        # this, a boolean would silently pass as a valid "integer" field.
+        is_bool_masquerading_as_int = spec.get("type") == "integer" and isinstance(
+            value[key], bool
+        )
+        if is_bool_masquerading_as_int or (expected and not isinstance(value[key], expected)):
             raise LLMError(
                 f"field {key} should be {spec['type']}, "
                 f"got {type(value[key]).__name__}"

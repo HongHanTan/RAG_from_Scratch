@@ -183,7 +183,12 @@ def ask(
             )
 
     prompt_name = None
-    if semantic_prompt:
+    if semantic_prompt and llm is not None:
+        # With no LLM there is no generation at all (see the `llm is None`
+        # return below), so a prompt choice here would never be used --
+        # tracing one anyway would show a routing decision that had no
+        # effect. Skipping is the same choice already made for logical
+        # routing when there is nothing to route between.
         prompt_name = _get_semantic_router(embedder).route(question, trace)
 
     chosen_strategy = get_strategy(strategy, **(strategy_options or {}))

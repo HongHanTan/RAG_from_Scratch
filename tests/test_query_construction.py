@@ -185,6 +185,15 @@ def test_build_filter_degrades_when_every_proposed_topic_is_unknown():
     assert any("degraded" in n for n in trace.notes)
 
 
+def test_build_filter_rejects_author_constraints_shorter_than_three_characters():
+    # MetadataFilter.matches does case-insensitive substring matching, and
+    # build_filter is the only producer of author constraints, so a one- or
+    # two-character name would match almost any author field in the corpus.
+    llm = ReplyLLM('{"authors": ["Li", "Khattab"]}')
+    f = build_filter("q", llm, TOPICS, Trace(question="q"))
+    assert f.authors == ("Khattab",)
+
+
 def test_build_filter_returns_an_empty_filter_for_an_unconstrained_question():
     llm = ReplyLLM("{}")
     assert build_filter("how does ColBERT work?", llm, TOPICS, Trace(question="q")).is_empty()

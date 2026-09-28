@@ -22,6 +22,13 @@ from rag.prompts import FILTER_SCHEMA, FILTER_TEMPLATE
 
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+MIN_AUTHOR_LENGTH = 3
+"""Shortest author constraint `build_filter` will accept.
+
+`MetadataFilter.matches` does case-insensitive substring matching on authors,
+and this is the only producer of author constraints, so a one- or
+two-character name would match almost any author field in the corpus."""
+
 
 @dataclass(frozen=True)
 class MetadataFilter:
@@ -136,7 +143,11 @@ def build_filter(question: str, llm, topics: tuple[str, ...], trace) -> Metadata
 
     filter_ = MetadataFilter(
         topics=chosen,
-        authors=tuple(a for a in parsed.get("authors", []) if isinstance(a, str)),
+        authors=tuple(
+            a
+            for a in parsed.get("authors", [])
+            if isinstance(a, str) and len(a) >= MIN_AUTHOR_LENGTH
+        ),
         published_before=_date("published_before"),
         published_after=_date("published_after"),
     )

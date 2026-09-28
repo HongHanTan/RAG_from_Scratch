@@ -298,6 +298,15 @@ def test_semantic_prompt_selection_records_its_choice(tiny_corpus: Config):
     assert any(s.kind == "route" and "prompt" in s.text for s in trace.translation)
 
 
+def test_semantic_prompt_is_skipped_without_an_llm(tiny_corpus: Config):
+    # With no LLM there is no generation at all, so a prompt choice would
+    # never be used -- tracing one anyway would show a routing decision that
+    # had no effect.
+    store = build_index(tiny_corpus, FakeEmbedder())
+    trace = ask("q", store, FakeEmbedder(), None, tiny_corpus, semantic_prompt=True)
+    assert not any(s.kind == "route" for s in trace.translation)
+
+
 def test_semantic_router_is_built_once_per_embedder_across_calls(
     tiny_corpus: Config,
 ):

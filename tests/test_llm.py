@@ -231,6 +231,16 @@ def test_structured_rejects_a_wrongly_typed_field(tmp_path):
         llm.structured("p", SCHEMA)
 
 
+def test_structured_rejects_a_boolean_for_an_integer_field(tmp_path):
+    # isinstance(True, int) is True in Python, so an "integer" schema field
+    # would otherwise silently accept a boolean. Phase 5's RAPTOR schemas
+    # declare "integer" fields, so this must be caught now.
+    schema = {"type": "object", "properties": {"count": {"type": "integer"}}}
+    llm = _llm(tmp_path, ['{"count": true}'], max_retries=1)
+    with pytest.raises(LLMError, match="count"):
+        llm.structured("p", schema)
+
+
 def test_structured_uses_the_same_cache_as_generate(tmp_path):
     llm = _llm(tmp_path, ['{"topics": ["a"]}'])
     llm.structured("p", SCHEMA)
