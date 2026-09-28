@@ -214,21 +214,37 @@ set (`evaluation/gold.json`), using `python -m evaluation.benchmark`:
 | decomposition | 0.333 | 0.194 | 0.187 | 0.600 | 3.4 | 81 | 10 |
 | direct | 0.325 | 0.103 | 0.137 | 0.560 | 0.0 | 28 | 10 |
 
-**Phase 4 changed one row.** Converting `step-back` to structured output (see
-below) changes the exact text the model produces for its general question —
-the JSON-constrained prompt reliably gets longer, more textbook-phrased
-questions back than the old free-form prompt did — which changes what gets
-retrieved. `Recall@20` moved from 0.475 to 0.383, `MRR@20` from 0.196 to
-0.136, `nDCG@20` from 0.225 to 0.170, `DocPrec@5` from 0.460 to 0.400. The
-other five rows are bit-for-bit unchanged, which is what rules out a
-routing- or construction-caused regression: both are off by default, so if
-they had leaked into the default path, more than one row would have moved.
-This one moved because the thing being converted — how step-back gets its
-question — is exactly what Phase 4 changed, not because of a bug. Chasing
-the old number back by hand-tuning the new prompt's wording would defeat the
-point of switching to structured output in the first place: the field's
-content is the model's choice, not something to be steered back to a
-specific score.
+**Phase 4 moved one row, and the sample cannot say which way.** Converting
+`step-back` to structured output changes the exact text the model returns for
+its general question, which changes what gets retrieved. `Recall@20` reads
+0.383 where the free-form version read 0.475, `MRR@20` 0.136 against 0.196,
+`nDCG@20` 0.170 against 0.225, `DocPrec@5` 0.400 against 0.460.
+
+Those numbers look like a clean regression and they are not. Scoring both
+prompts question by question, **five of the ten changed and they moved in
+both directions** — `raptor-clustering` 0.33 to 0.67 and `cot-limits` 0.00 to
+0.50 improved, while `selfrag-tokens` 1.00 to 0.00, `crag-quality` 1.00 to
+0.50 and `hyde-problem` 0.50 to 0.25 got worse. The net is negative, but with
+half the set flipping both ways and each question worth up to 0.1, ten
+questions cannot distinguish that from chance.
+
+One tempting explanation was tested and is wrong. The JSON-constrained prompt
+does return longer, more textbook-phrased questions, and the old prompt ended
+with "reply with the general question only, on one line" while the JSON one
+has no brevity instruction. Adding that instruction back changes the score
+not at all — 0.383 either way. Whatever drives the churn, verbosity is not
+it.
+
+The other five rows are bit-for-bit unchanged, which is what rules out a
+routing- or construction-caused regression: both are off by default, so a
+leak into the default path would have moved more than one row.
+
+Structured output is kept regardless of the number. It replaced four
+successive attempts to parse one line of prose out of a model reply, each of
+which lost to a reply shape the previous one had not anticipated. Trading an
+unmeasurable difference in retrieval for a parsing path that cannot silently
+pick the wrong line is the right trade — and hand-tuning the new prompt until
+the old number came back would be fitting the prompt to ten questions.
 
 Converting also uncovered a real accounting gap: `_CallCountingLLM` only
 intercepted `.generate()`, so step-back's move to `.structured()` bypassed
