@@ -217,6 +217,54 @@ def test_a_filter_matching_nothing_leaves_a_note_and_no_results(tiny_corpus: Con
     assert any("filter" in n.lower() for n in trace.notes)
 
 
+def test_filter_exclusion_note_reports_the_count(tiny_corpus: Config):
+    # tiny_corpus: alpha is 2023-05-01 (kept), beta is 2024-02-11 (excluded).
+    store = build_index(tiny_corpus, FakeEmbedder())
+    llm = FakeLLM('{"published_before": "2024-01-01"}')
+    trace = ask("q", store, FakeEmbedder(), llm, tiny_corpus, construct=True)
+    assert any("excluded 1 of 2 documents" in n for n in trace.notes)
+
+
+def test_filter_exclusion_note_names_the_excluded_document_when_few(
+    tiny_corpus: Config,
+):
+    store = build_index(tiny_corpus, FakeEmbedder())
+    llm = FakeLLM('{"published_before": "2024-01-01"}')
+    trace = ask("q", store, FakeEmbedder(), llm, tiny_corpus, construct=True)
+    assert any("beta" in n and "excluded" in n for n in trace.notes)
+
+
+def test_filter_exclusion_note_is_reported_even_when_nothing_is_excluded(
+    tiny_corpus: Config,
+):
+    # Unconditional means unconditional: an active filter that happens to
+    # exclude nothing still gets the note, with a zero count.
+    store = build_index(tiny_corpus, FakeEmbedder())
+    llm = FakeLLM('{"published_before": "2100-01-01"}')
+    trace = ask("q", store, FakeEmbedder(), llm, tiny_corpus, construct=True)
+    assert any("excluded 0 of 2 documents" in n for n in trace.notes)
+
+
+def test_filter_exclusion_note_omits_names_when_there_are_many(tiny_corpus: Config):
+    from rag.chunking import Chunk
+    from rag.store import VectorStore
+
+    embedder = FakeEmbedder()
+    chunks = [Chunk(f"d{i}:0", f"d{i}", 0, "text", 0, 4, 0, 4) for i in range(8)]
+    store = VectorStore(
+        vectors=embedder.encode([c.text for c in chunks]), chunks=chunks
+    )
+    store.doc_meta = {
+        f"d{i}": {"topic": None, "author": None, "publish_date": "2020-01-01"}
+        for i in range(8)
+    }
+    llm = FakeLLM('{"published_before": "2019-01-01"}')
+    trace = ask("q", store, embedder, llm, tiny_corpus, construct=True)
+    exclusion_note = next(n for n in trace.notes if "excluded" in n)
+    assert "excluded 8 of 8 documents" in exclusion_note
+    assert ":" not in exclusion_note.split("documents", 1)[1]
+
+
 def test_ask_with_routing_records_a_route(tiny_corpus: Config):
     # The tiny fixture corpus has no topics, so give it two: routing is
     # skipped entirely when there is nothing to choose between.
@@ -248,3 +296,33 @@ def test_semantic_prompt_selection_records_its_choice(tiny_corpus: Config):
         "q", store, FakeEmbedder(), FakeLLM(), tiny_corpus, semantic_prompt=True
     )
     assert any(s.kind == "route" and "prompt" in s.text for s in trace.translation)
+
+
+def test_semantic_router_is_built_once_per_embedder_across_calls(
+    tiny_corpus: Config,
+):
+    # SemanticRouter's own docstring promises exemplars are embedded once at
+    # construction; building a fresh router inside every ask() call would
+    # re-embed them on every question instead, silently breaking that
+    # promise even though nothing at the class level would ever show it.
+    from rag.prompts import PROMPT_EXEMPLARS
+
+    store = build_index(tiny_corpus, FakeEmbedder())
+    embedder = FakeEmbedder()
+    calls = []
+    original = embedder.encode
+
+    def counting(texts, batch_size=32):
+        calls.append(len(texts))
+        return original(texts, batch_size=batch_size)
+
+    embedder.encode = counting
+
+    ask("q1", store, embedder, FakeLLM(), tiny_corpus, semantic_prompt=True)
+    ask("q2", store, embedder, FakeLLM(), tiny_corpus, semantic_prompt=True)
+
+    # One batch of exemplars embedded once, plus one query embedding per
+    # ask() call for retrieval and one for the router -- never a second
+    # exemplar batch.
+    exemplar_batches = [c for c in calls if c == len(PROMPT_EXEMPLARS)]
+    assert len(exemplar_batches) == 1

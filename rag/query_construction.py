@@ -107,12 +107,32 @@ def build_filter(question: str, llm, topics: tuple[str, ...], trace) -> Metadata
     # A hallucinated topic would mask out the whole corpus, so drop unknowns.
     chosen = tuple(t for t in parsed.get("topics", []) if t in topics)
     dropped = [t for t in parsed.get("topics", []) if t not in topics]
-    if dropped:
+    if dropped and not chosen:
+        # Every topic the model proposed was unknown: the topic constraint it
+        # meant to add has silently vanished rather than merely shrunk.
+        trace.degraded(
+            f"query construction proposed unknown topics: {', '.join(dropped)}",
+            "no topic filter",
+        )
+    elif dropped:
+        # Some proposed topics were valid and are still applied here; this is
+        # visibility into what was dropped, not a fallback to a safe default.
         trace.note(f"query construction proposed unknown topics: {', '.join(dropped)}")
 
     def _date(key: str) -> str | None:
         value = parsed.get(key)
-        return value if isinstance(value, str) and ISO_DATE.match(value) else None
+        if value is None:
+            return None
+        if isinstance(value, str) and ISO_DATE.match(value):
+            return value
+        # The model tried to constrain on this field and produced something
+        # that cannot be compared as an ISO date; the constraint disappears
+        # silently unless this is recorded.
+        trace.degraded(
+            f"query construction produced a malformed {key}: {value!r}",
+            f"no {key} constraint",
+        )
+        return None
 
     filter_ = MetadataFilter(
         topics=chosen,

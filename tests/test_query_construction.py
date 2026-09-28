@@ -173,6 +173,18 @@ def test_build_filter_drops_a_topic_that_does_not_exist():
     assert f.topics == ("rag-systems",)
 
 
+def test_build_filter_degrades_when_every_proposed_topic_is_unknown():
+    # When some proposed topics survive, the filter is merely smaller than
+    # proposed -- not this case. Here every proposed topic is hallucinated,
+    # so the topic constraint the model meant to add vanishes entirely: that
+    # is the exact silent fallback the "degraded" contract exists to catch.
+    trace = Trace(question="q")
+    llm = ReplyLLM('{"topics": ["invented-one", "invented-two"]}')
+    f = build_filter("q", llm, TOPICS, trace)
+    assert f.topics == ()
+    assert any("degraded" in n for n in trace.notes)
+
+
 def test_build_filter_returns_an_empty_filter_for_an_unconstrained_question():
     llm = ReplyLLM("{}")
     assert build_filter("how does ColBERT work?", llm, TOPICS, Trace(question="q")).is_empty()
@@ -204,10 +216,13 @@ def test_build_filter_degrades_on_malformed_json():
 
 
 def test_build_filter_ignores_a_malformed_date():
-    # "2024" is not a date the mask can compare against ISO strings.
+    # "2024" is not a date the mask can compare against ISO strings. The
+    # model tried to constrain the answer and the constraint disappeared, so
+    # that must show up on the trace -- not vanish with no note at all.
     trace = Trace(question="q")
     f = build_filter("q", ReplyLLM('{"published_before": "2024"}'), TOPICS, trace)
     assert f.published_before is None
+    assert any("degraded" in n for n in trace.notes)
 
 
 def test_build_filter_needs_no_llm_gracefully():

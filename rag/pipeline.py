@@ -6,6 +6,7 @@ question arriving and the search running; the Trace shape does not change.
 
 from __future__ import annotations
 
+import weakref
 from dataclasses import replace
 
 from rag.chunking import chunk_documents
@@ -19,6 +20,34 @@ from rag.store import VectorStore
 from rag.strategies import get_strategy
 from rag.strategies.base import StrategyContext
 from rag.trace import Trace
+
+_MAX_NAMED_EXCLUSIONS = 5
+"""Above this many excluded documents, the exclusion note reports only the
+count. Naming every one of a large exclusion set would make the trace less
+readable than the count alone; naming a handful is exactly what lets a reader
+see, at a glance, that a document the question named is among them."""
+
+_semantic_routers: "weakref.WeakKeyDictionary[object, SemanticRouter]" = (
+    weakref.WeakKeyDictionary()
+)
+"""One SemanticRouter per embedder, built the first time it is needed.
+
+`SemanticRouter.__init__` embeds every exemplar question -- its own docstring
+promises that happens "once at construction". Building a fresh router inside
+every `ask()` call would re-embed the same handful of exemplars on every
+question, silently breaking that promise. Keyed by the embedder object
+(weakly, so a discarded embedder does not pin a router forever) rather than
+by config, because the router's vectors are only valid for the embedder that
+produced them.
+"""
+
+
+def _get_semantic_router(embedder) -> SemanticRouter:
+    router = _semantic_routers.get(embedder)
+    if router is None:
+        router = SemanticRouter(embedder, PROMPT_EXEMPLARS)
+        _semantic_routers[embedder] = router
+    return router
 
 
 def build_index(config: Config, embedder) -> VectorStore:
@@ -121,6 +150,29 @@ def ask(
     mask = None
     if not active.is_empty():
         mask = compile_mask(active, store.chunks, store.doc_meta)
+
+        # Report what the filter excluded, unconditionally and structurally --
+        # not by detecting that the question *names* an excluded document
+        # (that needs entity matching against titles, the prose-heuristic
+        # path Phase 4 deleted eight tests to escape). Counting is
+        # deterministic, needs no LLM, and still puts the excluded document's
+        # id on screen next to a question that names it, in the common case
+        # where there are few enough to list.
+        excluded_doc_ids = sorted(
+            doc_id
+            for doc_id, record in store.doc_meta.items()
+            if not active.matches(record)
+        )
+        detail = (
+            f": {', '.join(excluded_doc_ids)}"
+            if 0 < len(excluded_doc_ids) <= _MAX_NAMED_EXCLUSIONS
+            else ""
+        )
+        trace.note(
+            f"filter ({active.describe()}) excluded {len(excluded_doc_ids)} of "
+            f"{len(store.doc_meta)} documents{detail}"
+        )
+
         if not mask.any():
             # A filter matching nothing must return no results rather than
             # silently falling back to unfiltered search, which would answer
@@ -132,7 +184,7 @@ def ask(
 
     prompt_name = None
     if semantic_prompt:
-        prompt_name = SemanticRouter(embedder, PROMPT_EXEMPLARS).route(question, trace)
+        prompt_name = _get_semantic_router(embedder).route(question, trace)
 
     chosen_strategy = get_strategy(strategy, **(strategy_options or {}))
     ctx = StrategyContext(
