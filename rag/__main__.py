@@ -8,6 +8,7 @@
     python -m rag ask "..." --strategy hyde --queries
     python -m rag ask "..." --strategy decomposition --decomposition-mode independent
     python -m rag ask "..." --strategy hyde --retrieval-depth 30
+    python -m rag ask "..." --index multirep
 
 The embedder and LLM are built by injected factories so the CLI can be tested
 without loading a model or holding a key. `--strategy` other than `direct`
@@ -160,6 +161,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--semantic-prompt", action="store_true",
         help="pick the answer prompt by embedding similarity (no LLM call)",
     )
+    ask_parser.add_argument(
+        "--index", choices=list(INDEX_MODES), default="flat",
+        help="which index to search (default: flat)",
+    )
 
     return parser
 
@@ -258,7 +263,7 @@ def _run(args, embedder_factory, llm_factory) -> int:
         )
         return 0
 
-    store = load_index(config)
+    store = load_index(config, mode=args.index)
 
     embedder = embedder_factory(config)
     llm = None

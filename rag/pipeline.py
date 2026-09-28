@@ -13,7 +13,10 @@ from pathlib import Path
 from rag.chunking import chunk_documents
 from rag.config import Config
 from rag.generation import generate_answer
-from rag.indexing.multi_representation import build_multi_representation
+from rag.indexing.multi_representation import (
+    build_multi_representation,
+    expand_to_documents,
+)
 from rag.indexing.raptor import build_raptor
 from rag.loader import load_documents
 from rag.prompts import PROMPT_EXEMPLARS
@@ -258,6 +261,22 @@ def ask(
         mask=mask,
     )
     result = chosen_strategy.run(question, ctx)
+
+    # Expansion happens here, after the strategy has produced its list,
+    # rather than inside the default search path: every strategy retrieves
+    # summary nodes from a multirep index, so expanding in one place is what
+    # keeps the technique from being silently strategy-dependent.
+    if store.docstore:
+        result = replace(
+            result, retrieved=expand_to_documents(result.retrieved, store.docstore)
+        )
+        trace.note(
+            f"index mode multirep: {len(result.retrieved)} summary hits expanded "
+            "to full documents"
+        )
+    elif any(c.is_synthetic for c in store.chunks):
+        trace.note("index mode raptor: search spans raw chunks and summaries")
+
     trace.retrieved = result.retrieved
 
     if llm is None:

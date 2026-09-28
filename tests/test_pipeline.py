@@ -421,3 +421,50 @@ def test_raptor_index_is_larger_than_flat(tiny_corpus: Config):
         tiny_corpus, FakeEmbedder(), llm=FakeLLM("a summary"), mode="raptor"
     )
     assert len(raptor) >= len(flat)
+
+
+def test_a_multirep_hit_is_expanded_to_the_document(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder(), llm=FakeLLM("a summary"), mode="multirep")
+    trace = ask("q", store, FakeEmbedder(), FakeLLM(), tiny_corpus, generate=False)
+    texts = {r.chunk.text for r in trace.retrieved}
+    assert "a summary" not in texts
+    assert any("Cosine similarity" in t or "Reciprocal rank" in t for t in texts)
+
+
+def test_expansion_applies_to_every_strategy_not_just_direct(tiny_corpus: Config):
+    # The expansion happens after the strategy returns, so a translated
+    # strategy gets documents too. Retrieving summaries through hyde or
+    # multi-query and handing them to the generator unexpanded would make
+    # the technique silently strategy-dependent.
+    store = build_index(tiny_corpus, FakeEmbedder(), llm=FakeLLM("a summary"), mode="multirep")
+    for strategy, response in (
+        ("multi-query", "1. first rewrite\n2. second rewrite"),
+        ("hyde", "a hypothetical passage about vectors"),
+    ):
+        trace = ask(
+            "q", store, FakeEmbedder(), FakeLLM(response), tiny_corpus,
+            strategy=strategy, generate=False,
+        )
+        texts = {r.chunk.text for r in trace.retrieved}
+        assert "a summary" not in texts, strategy
+        assert any(
+            "Cosine similarity" in t or "Reciprocal rank" in t for t in texts
+        ), strategy
+
+
+def test_expansion_does_not_happen_without_a_docstore(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder(), mode="flat")
+    trace = ask("q", store, FakeEmbedder(), FakeLLM(), tiny_corpus, generate=False)
+    assert trace.retrieved
+
+
+def test_the_trace_records_which_index_was_used(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder(), llm=FakeLLM("s"), mode="multirep")
+    trace = ask("q", store, FakeEmbedder(), FakeLLM(), tiny_corpus, generate=False)
+    assert any("multirep" in n for n in trace.notes)
+
+
+def test_the_trace_records_a_raptor_index(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder(), llm=FakeLLM("s"), mode="raptor")
+    trace = ask("q", store, FakeEmbedder(), FakeLLM(), tiny_corpus, generate=False)
+    assert any("raptor" in n for n in trace.notes)

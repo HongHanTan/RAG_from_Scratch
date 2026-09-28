@@ -585,3 +585,16 @@ def test_an_unknown_index_mode_is_rejected(tiny_corpus, monkeypatch):
     monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
     with pytest.raises(SystemExit):
         main(["index", "--index-mode", "nope"], **_factories())
+
+
+def test_ask_accepts_an_index_flag(tiny_corpus, monkeypatch, capsys):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+    assert main(["ask", "q", "--index", "flat", "--no-llm"], **_factories()) == 0
+
+
+def test_asking_against_a_missing_index_reports_which_one(tiny_corpus, monkeypatch, capsys):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    assert main(["ask", "q", "--index", "raptor", "--no-llm"], **_factories()) == 1
+    err = capsys.readouterr().err
+    assert "raptor" in err
