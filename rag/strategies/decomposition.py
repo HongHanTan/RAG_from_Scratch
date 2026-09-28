@@ -87,9 +87,12 @@ class DecompositionStrategy:
                         )
                     ).strip()
                 except LLMError as exc:
-                    # One failed sub-question should not lose the others.
+                    # One failed sub-question should not lose the others, but
+                    # the strategy is now running on fewer sub-answers than
+                    # the method specifies -- a genuine partial degradation.
                     ctx.trace.note(
-                        f"sub-question failed, continuing without it: {exc}"
+                        f"sub-question failed, degraded to continuing without "
+                        f"it: {exc}"
                     )
                     continue
 

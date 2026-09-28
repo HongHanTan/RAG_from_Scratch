@@ -33,6 +33,9 @@ def generate_answer(
         try:
             answer = llm.generate(prompt)
         except LLMError as exc:
+            # Deliberately no "degraded" sentinel: there is no fallback here,
+            # the answer is simply absent, and the benchmark runs with
+            # generate=False so this path never fires during scoring.
             trace.note(f"generation failed: {exc}")
             return None
     if getattr(llm, "last_call_cached", False):

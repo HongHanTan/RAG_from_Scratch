@@ -604,6 +604,9 @@ def test_a_failed_sub_answer_does_not_abort_the_whole_strategy(tiny_corpus: Conf
     result = get_strategy("decomposition").run("q", ctx)
     assert result.retrieved
     assert any("sub-question" in n for n in ctx.trace.notes)
+    # A partial failure is a genuine degradation -- the benchmark must be
+    # able to catch it via the shared "degraded" sentinel.
+    assert any("degraded" in n for n in ctx.trace.notes)
 
 
 @pytest.mark.parametrize(
