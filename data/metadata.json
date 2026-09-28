@@ -5,266 +5,304 @@
       "source": "arxiv",
       "publish_date": "2020-05-22",
       "author": "Lewis et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2005.11401"
+      "url": "https://ar5iv.labs.arxiv.org/html/2005.11401",
+      "topic": "rag-systems"
     },
     "dpr": {
       "title": "Dense Passage Retrieval for Open-Domain Question Answering",
       "source": "arxiv",
       "publish_date": "2020-04-10",
       "author": "Karpukhin et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2004.04906"
+      "url": "https://ar5iv.labs.arxiv.org/html/2004.04906",
+      "topic": "retrieval-models"
     },
     "realm": {
       "title": "REALM: Retrieval-Augmented Language Model Pre-Training",
       "source": "arxiv",
       "publish_date": "2020-02-10",
       "author": "Guu et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2002.08909"
+      "url": "https://ar5iv.labs.arxiv.org/html/2002.08909",
+      "topic": "rag-systems"
     },
     "colbert": {
       "title": "ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction",
       "source": "arxiv",
       "publish_date": "2020-04-27",
       "author": "Khattab and Zaharia",
-      "url": "https://ar5iv.labs.arxiv.org/html/2004.12832"
+      "url": "https://ar5iv.labs.arxiv.org/html/2004.12832",
+      "topic": "retrieval-models"
     },
     "colbertv2": {
       "title": "ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction",
       "source": "arxiv",
       "publish_date": "2021-12-02",
       "author": "Santhanam et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2112.01488"
+      "url": "https://ar5iv.labs.arxiv.org/html/2112.01488",
+      "topic": "retrieval-models"
     },
     "hyde": {
       "title": "Precise Zero-Shot Dense Retrieval without Relevance Labels",
       "source": "arxiv",
       "publish_date": "2022-12-20",
       "author": "Gao et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2212.10496"
+      "url": "https://ar5iv.labs.arxiv.org/html/2212.10496",
+      "topic": "prompting-reasoning"
     },
     "raptor": {
       "title": "RAPTOR: Recursive Abstractive Processing for Tree-Organized Retrieval",
       "source": "arxiv",
       "publish_date": "2024-01-31",
       "author": "Sarthi et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2401.18059"
+      "url": "https://ar5iv.labs.arxiv.org/html/2401.18059",
+      "topic": "rag-systems"
     },
     "self_rag": {
       "title": "Self-RAG: Learning to Retrieve, Generate, and Critique",
       "source": "arxiv",
       "publish_date": "2023-10-17",
       "author": "Asai et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2310.11511"
+      "url": "https://ar5iv.labs.arxiv.org/html/2310.11511",
+      "topic": "rag-systems"
     },
     "step_back": {
       "title": "Take a Step Back: Evoking Reasoning via Abstraction",
       "source": "arxiv",
       "publish_date": "2023-10-09",
       "author": "Zheng et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2310.06117"
+      "url": "https://ar5iv.labs.arxiv.org/html/2310.06117",
+      "topic": "prompting-reasoning"
     },
     "ircot": {
       "title": "Interleaving Retrieval with Chain-of-Thought Reasoning",
       "source": "arxiv",
       "publish_date": "2022-12-20",
       "author": "Trivedi et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2212.10509"
+      "url": "https://ar5iv.labs.arxiv.org/html/2212.10509",
+      "topic": "prompting-reasoning"
     },
     "cot": {
       "title": "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models",
       "source": "arxiv",
       "publish_date": "2022-01-28",
       "author": "Wei et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2201.11903"
+      "url": "https://ar5iv.labs.arxiv.org/html/2201.11903",
+      "topic": "prompting-reasoning"
     },
     "least_to_most": {
       "title": "Least-to-Most Prompting Enables Complex Reasoning",
       "source": "arxiv",
       "publish_date": "2022-05-21",
       "author": "Zhou et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2205.10625"
+      "url": "https://ar5iv.labs.arxiv.org/html/2205.10625",
+      "topic": "prompting-reasoning"
     },
     "react": {
       "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
       "source": "arxiv",
       "publish_date": "2022-10-06",
       "author": "Yao et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2210.03629"
+      "url": "https://ar5iv.labs.arxiv.org/html/2210.03629",
+      "topic": "prompting-reasoning"
     },
     "rag_survey": {
       "title": "Retrieval-Augmented Generation for Large Language Models: A Survey",
       "source": "arxiv",
       "publish_date": "2023-12-18",
       "author": "Gao et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2312.10997"
+      "url": "https://ar5iv.labs.arxiv.org/html/2312.10997",
+      "topic": "rag-systems"
     },
     "beir": {
       "title": "BEIR: A Heterogeneous Benchmark for Zero-shot Information Retrieval",
       "source": "arxiv",
       "publish_date": "2021-04-17",
       "author": "Thakur et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2104.08663"
+      "url": "https://ar5iv.labs.arxiv.org/html/2104.08663",
+      "topic": "evaluation-benchmarks"
     },
     "sbert": {
       "title": "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks",
       "source": "arxiv",
       "publish_date": "2019-08-27",
       "author": "Reimers and Gurevych",
-      "url": "https://ar5iv.labs.arxiv.org/html/1908.10084"
+      "url": "https://ar5iv.labs.arxiv.org/html/1908.10084",
+      "topic": "retrieval-models"
     },
     "bert": {
       "title": "BERT: Pre-training of Deep Bidirectional Transformers",
       "source": "arxiv",
       "publish_date": "2018-10-11",
       "author": "Devlin et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/1810.04805"
+      "url": "https://ar5iv.labs.arxiv.org/html/1810.04805",
+      "topic": "foundations"
     },
     "fid": {
       "title": "Leveraging Passage Retrieval with Generative Models",
       "source": "arxiv",
       "publish_date": "2020-07-02",
       "author": "Izacard and Grave",
-      "url": "https://ar5iv.labs.arxiv.org/html/2007.01282"
+      "url": "https://ar5iv.labs.arxiv.org/html/2007.01282",
+      "topic": "rag-systems"
     },
     "ragas": {
       "title": "RAGAS: Automated Evaluation of Retrieval Augmented Generation",
       "source": "arxiv",
       "publish_date": "2023-09-26",
       "author": "Es et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2309.15217"
+      "url": "https://ar5iv.labs.arxiv.org/html/2309.15217",
+      "topic": "evaluation-benchmarks"
     },
     "crag": {
       "title": "Corrective Retrieval Augmented Generation",
       "source": "arxiv",
       "publish_date": "2024-01-29",
       "author": "Yan et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2401.15884"
+      "url": "https://ar5iv.labs.arxiv.org/html/2401.15884",
+      "topic": "rag-systems"
     },
     "query_rewriting": {
       "title": "Query Rewriting for Retrieval-Augmented Large Language Models",
       "source": "arxiv",
       "publish_date": "2023-05-23",
       "author": "Ma et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2305.14283"
+      "url": "https://ar5iv.labs.arxiv.org/html/2305.14283",
+      "topic": "prompting-reasoning"
     },
     "ir_llm_survey": {
       "title": "Large Language Models for Information Retrieval: A Survey",
       "source": "arxiv",
       "publish_date": "2023-08-14",
       "author": "Zhu et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2308.07107"
+      "url": "https://ar5iv.labs.arxiv.org/html/2308.07107",
+      "topic": "evaluation-benchmarks"
     },
     "splade": {
       "title": "SPLADE: Sparse Lexical and Expansion Model for First Stage Ranking",
       "source": "arxiv",
       "publish_date": "2021-07-12",
       "author": "Formal et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2107.05720"
+      "url": "https://ar5iv.labs.arxiv.org/html/2107.05720",
+      "topic": "retrieval-models"
     },
     "contriever": {
       "title": "Unsupervised Dense Information Retrieval with Contrastive Learning",
       "source": "arxiv",
       "publish_date": "2021-12-16",
       "author": "Izacard et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2112.09118"
+      "url": "https://ar5iv.labs.arxiv.org/html/2112.09118",
+      "topic": "retrieval-models"
     },
     "atlas": {
       "title": "Atlas: Few-shot Learning with Retrieval Augmented Language Models",
       "source": "arxiv",
       "publish_date": "2022-08-05",
       "author": "Izacard et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2208.03299"
+      "url": "https://ar5iv.labs.arxiv.org/html/2208.03299",
+      "topic": "rag-systems"
     },
     "replug": {
       "title": "REPLUG: Retrieval-Augmented Black-Box Language Models",
       "source": "arxiv",
       "publish_date": "2023-01-30",
       "author": "Shi et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2301.12652"
+      "url": "https://ar5iv.labs.arxiv.org/html/2301.12652",
+      "topic": "rag-systems"
     },
     "lost_in_middle": {
       "title": "Lost in the Middle: How Language Models Use Long Contexts",
       "source": "arxiv",
       "publish_date": "2023-07-06",
       "author": "Liu et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2307.03172"
+      "url": "https://ar5iv.labs.arxiv.org/html/2307.03172",
+      "topic": "evaluation-benchmarks"
     },
     "hotpotqa": {
       "title": "HotpotQA: A Dataset for Diverse, Explainable Multi-hop Question Answering",
       "source": "arxiv",
       "publish_date": "2018-09-25",
       "author": "Yang et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/1809.09600"
+      "url": "https://ar5iv.labs.arxiv.org/html/1809.09600",
+      "topic": "evaluation-benchmarks"
     },
     "natural_questions": {
       "title": "Latent Retrieval for Weakly Supervised Open Domain Question Answering",
       "source": "arxiv",
       "publish_date": "2019-06-01",
       "author": "Lee et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/1906.00300"
+      "url": "https://ar5iv.labs.arxiv.org/html/1906.00300",
+      "topic": "evaluation-benchmarks"
     },
     "rankgpt": {
       "title": "Is ChatGPT Good at Search? Investigating LLMs as Re-Ranking Agents",
       "source": "arxiv",
       "publish_date": "2023-04-19",
       "author": "Sun et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2304.09542"
+      "url": "https://ar5iv.labs.arxiv.org/html/2304.09542",
+      "topic": "evaluation-benchmarks"
     },
     "multi_vector": {
       "title": "Sparse, Dense, and Attentional Representations for Text Retrieval",
       "source": "arxiv",
       "publish_date": "2020-05-01",
       "author": "Luan et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2005.00181"
+      "url": "https://ar5iv.labs.arxiv.org/html/2005.00181",
+      "topic": "retrieval-models"
     },
     "prompt_survey": {
       "title": "Pre-train, Prompt, and Predict: A Systematic Survey of Prompting Methods",
       "source": "arxiv",
       "publish_date": "2021-07-28",
       "author": "Liu et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2107.13586"
+      "url": "https://ar5iv.labs.arxiv.org/html/2107.13586",
+      "topic": "prompting-reasoning"
     },
     "instructor": {
       "title": "One Embedder, Any Task: Instruction-Finetuned Text Embeddings",
       "source": "arxiv",
       "publish_date": "2022-12-19",
       "author": "Su et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2212.09741"
+      "url": "https://ar5iv.labs.arxiv.org/html/2212.09741",
+      "topic": "retrieval-models"
     },
     "gtr": {
       "title": "Large Dual Encoders Are Generalizable Retrievers",
       "source": "arxiv",
       "publish_date": "2021-12-15",
       "author": "Ni et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2112.07899"
+      "url": "https://ar5iv.labs.arxiv.org/html/2112.07899",
+      "topic": "retrieval-models"
     },
     "mteb": {
       "title": "MTEB: Massive Text Embedding Benchmark",
       "source": "arxiv",
       "publish_date": "2022-10-13",
       "author": "Muennighoff et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2210.07316"
+      "url": "https://ar5iv.labs.arxiv.org/html/2210.07316",
+      "topic": "evaluation-benchmarks"
     },
     "longformer": {
       "title": "Longformer: The Long-Document Transformer",
       "source": "arxiv",
       "publish_date": "2020-04-10",
       "author": "Beltagy et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/2004.05150"
+      "url": "https://ar5iv.labs.arxiv.org/html/2004.05150",
+      "topic": "foundations"
     },
     "t5": {
       "title": "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer",
       "source": "arxiv",
       "publish_date": "2019-10-23",
       "author": "Raffel et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/1910.10683"
+      "url": "https://ar5iv.labs.arxiv.org/html/1910.10683",
+      "topic": "foundations"
     },
     "attention": {
       "title": "Attention Is All You Need",
       "source": "arxiv",
       "publish_date": "2017-06-12",
       "author": "Vaswani et al.",
-      "url": "https://ar5iv.labs.arxiv.org/html/1706.03762"
+      "url": "https://ar5iv.labs.arxiv.org/html/1706.03762",
+      "topic": "foundations"
     }
   }
 }

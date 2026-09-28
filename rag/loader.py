@@ -21,6 +21,12 @@ class Document:
     publish_date: str | None = None
     author: str | None = None
     url: str | None = None
+    topic: str | None = None
+    """Which topical collection this document belongs to.
+
+    Every document in this corpus has source "arxiv", so `source` cannot
+    partition it. `topic` is what logical routing chooses between.
+    """
 
 
 def load_documents(corpus_dir: Path, metadata_path: Path) -> list[Document]:
@@ -89,6 +95,7 @@ def load_documents(corpus_dir: Path, metadata_path: Path) -> list[Document]:
                 publish_date=record.get("publish_date"),
                 author=record.get("author"),
                 url=record.get("url"),
+                topic=record.get("topic"),
             )
         )
     return documents

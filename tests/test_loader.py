@@ -131,3 +131,18 @@ def test_metadata_entry_that_is_not_a_mapping_raises_actionable_value_error(
     message = str(exc_info.value)
     assert str(tiny_corpus.metadata_path) in message
     assert "alpha" in message
+
+
+def test_topic_is_read_from_metadata(tiny_corpus: Config):
+    import json
+
+    meta = json.loads(tiny_corpus.metadata_path.read_text(encoding="utf-8"))
+    meta["documents"]["alpha"]["topic"] = "similarity"
+    tiny_corpus.metadata_path.write_text(json.dumps(meta), encoding="utf-8")
+    docs = load_documents(tiny_corpus.corpus_dir, tiny_corpus.metadata_path)
+    assert docs[0].topic == "similarity"
+
+
+def test_topic_defaults_to_none_when_absent(tiny_corpus: Config):
+    docs = load_documents(tiny_corpus.corpus_dir, tiny_corpus.metadata_path)
+    assert docs[0].topic is None
