@@ -573,3 +573,15 @@ def test_semantic_prompt_is_allowed_without_an_llm(tiny_corpus, monkeypatch):
     monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
     main(["index"], **_factories())
     assert main(["ask", "q", "--semantic-prompt", "--no-llm"], **_factories()) == 0
+
+
+def test_index_mode_flag_is_accepted(tiny_corpus, monkeypatch, capsys):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    assert main(["index", "--index-mode", "flat"], **_factories()) == 0
+    assert "chunks" in capsys.readouterr().out
+
+
+def test_an_unknown_index_mode_is_rejected(tiny_corpus, monkeypatch):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    with pytest.raises(SystemExit):
+        main(["index", "--index-mode", "nope"], **_factories())

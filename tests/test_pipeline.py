@@ -335,3 +335,89 @@ def test_semantic_router_is_built_once_per_embedder_across_calls(
     # exemplar batch.
     exemplar_batches = [c for c in calls if c == len(PROMPT_EXEMPLARS)]
     assert len(exemplar_batches) == 1
+
+
+# --- index modes ------------------------------------------------------------
+
+def test_index_path_differs_per_mode(tiny_corpus: Config):
+    from rag.pipeline import index_path_for
+
+    flat = index_path_for(tiny_corpus, "flat")
+    raptor = index_path_for(tiny_corpus, "raptor")
+    assert flat != raptor
+    assert flat == tiny_corpus.index_path
+    assert "raptor" in raptor.name
+
+
+def test_an_unknown_mode_is_rejected(tiny_corpus: Config):
+    from rag.pipeline import index_path_for
+
+    with pytest.raises(ValueError, match="nope"):
+        index_path_for(tiny_corpus, "nope")
+
+
+def test_index_meta_records_the_mode(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder(), mode="flat")
+    assert store.meta["index_mode"] == "flat"
+
+
+def test_loading_a_flat_index_as_raptor_is_refused(tiny_corpus: Config):
+    from rag.pipeline import index_path_for
+
+    build_index(tiny_corpus, FakeEmbedder(), mode="flat")
+    # Point the raptor path at the flat file to simulate a stale build.
+    index_path_for(tiny_corpus, "raptor").write_bytes(
+        index_path_for(tiny_corpus, "flat").read_bytes()
+    )
+    with pytest.raises(ValueError, match="index_mode"):
+        load_index(tiny_corpus, mode="raptor")
+
+
+def test_a_legacy_index_without_a_mode_still_loads_as_flat(tiny_corpus: Config):
+    # VectorStore.load tolerates a key that is absent from the stored meta
+    # ("if key in meta and meta[key] != value"), which is what lets an index
+    # written before index_mode existed still load. Do not tighten that: the
+    # non-flat modes write their own files, so a file at the flat path with
+    # no index_mode can only be a legacy flat index, and refusing it would
+    # force a needless rebuild.
+    import json
+
+    import numpy as np
+
+    from rag.pipeline import index_path_for
+
+    build_index(tiny_corpus, FakeEmbedder(), mode="flat")
+    path = index_path_for(tiny_corpus, "flat")
+    with np.load(path, allow_pickle=False) as data:
+        payload = {k: data[k] for k in data.files}
+    meta = json.loads(str(payload["meta"]))
+    del meta["index_mode"]
+    payload["meta"] = np.array(json.dumps(meta, sort_keys=True))
+    np.savez_compressed(path, **payload)
+
+    store = load_index(tiny_corpus, mode="flat")
+    assert len(store) > 0
+
+
+def test_building_multirep_needs_an_llm(tiny_corpus: Config):
+    with pytest.raises(ValueError, match="llm"):
+        build_index(tiny_corpus, FakeEmbedder(), llm=None, mode="multirep")
+
+
+def test_building_raptor_needs_an_llm(tiny_corpus: Config):
+    with pytest.raises(ValueError, match="llm"):
+        build_index(tiny_corpus, FakeEmbedder(), llm=None, mode="raptor")
+
+
+def test_multirep_index_has_one_node_per_document(tiny_corpus: Config):
+    store = build_index(tiny_corpus, FakeEmbedder(), llm=FakeLLM("a summary"), mode="multirep")
+    assert len(store) == 2
+    assert store.docstore
+
+
+def test_raptor_index_is_larger_than_flat(tiny_corpus: Config):
+    flat = build_index(tiny_corpus, FakeEmbedder(), mode="flat")
+    raptor = build_index(
+        tiny_corpus, FakeEmbedder(), llm=FakeLLM("a summary"), mode="raptor"
+    )
+    assert len(raptor) >= len(flat)

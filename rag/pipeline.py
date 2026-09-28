@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import weakref
 from dataclasses import replace
+from pathlib import Path
 
 from rag.chunking import chunk_documents
 from rag.config import Config
 from rag.generation import generate_answer
+from rag.indexing.multi_representation import build_multi_representation
+from rag.indexing.raptor import build_raptor
 from rag.loader import load_documents
 from rag.prompts import PROMPT_EXEMPLARS
 from rag.query_construction import MetadataFilter, build_filter, compile_mask
@@ -50,52 +53,102 @@ def _get_semantic_router(embedder) -> SemanticRouter:
     return router
 
 
-def build_index(config: Config, embedder) -> VectorStore:
-    """Load the corpus, chunk it, embed it, and persist the result."""
-    documents = load_documents(config.corpus_dir, config.metadata_path)
-    chunks = chunk_documents(
-        documents, embedder.tokenizer, config.chunk_tokens, config.chunk_overlap
+INDEX_MODES = ("flat", "multirep", "raptor")
+"""The index layouts this project can build.
+
+Each gets its own file. Both new techniques change what goes *into* the
+index rather than how it is searched, so mixing them into the flat index
+would move every benchmark number for reasons unrelated to the strategies
+being measured.
+"""
+
+
+def index_path_for(config: Config, mode: str) -> Path:
+    """Where the index for this mode lives.
+
+    Each mode gets its own file so the flat index -- which every benchmark
+    number in the README rests on -- is never overwritten by a RAPTOR build.
+    """
+    if mode not in INDEX_MODES:
+        raise ValueError(
+            f"unknown index mode: {mode} (choose one of {', '.join(INDEX_MODES)})"
+        )
+    if mode == "flat":
+        return config.index_path
+    return config.index_path.with_name(
+        f"{config.index_path.stem}-{mode}{config.index_path.suffix}"
     )
-    vectors = embedder.encode([chunk.text for chunk in chunks])
-    store = VectorStore(vectors=vectors, chunks=chunks)
-    store.meta = _index_meta(config, store.dim)
-    store.doc_meta = {
-        doc.doc_id: {
-            "title": doc.title,
-            "source": doc.source,
-            "topic": doc.topic,
-            "publish_date": doc.publish_date,
-            "author": doc.author,
-            "url": doc.url,
+
+
+def build_index(config: Config, embedder, llm=None, mode: str = "flat") -> VectorStore:
+    """Build and persist the index for `mode`.
+
+    `multirep` and `raptor` both summarise with the LLM, so they need one;
+    asking for them without it is a configuration error, not something to
+    degrade around -- an index silently built without its summaries would be
+    a flat index wearing the wrong name.
+    """
+    path = index_path_for(config, mode)
+    documents = load_documents(config.corpus_dir, config.metadata_path)
+    if mode != "flat" and llm is None:
+        raise ValueError(f"index mode {mode} needs an llm to summarise with")
+
+    if mode == "multirep":
+        store = build_multi_representation(documents, embedder, llm)
+    else:
+        chunks = chunk_documents(
+            documents, embedder.tokenizer, config.chunk_tokens, config.chunk_overlap
+        )
+        vectors = embedder.encode([chunk.text for chunk in chunks])
+        if mode == "raptor":
+            chunks, vectors = build_raptor(chunks, vectors, embedder, llm, config)
+        store = VectorStore(vectors=vectors, chunks=chunks)
+        store.doc_meta = {
+            doc.doc_id: {
+                "title": doc.title,
+                "source": doc.source,
+                "topic": doc.topic,
+                "publish_date": doc.publish_date,
+                "author": doc.author,
+                "url": doc.url,
+            }
+            for doc in documents
         }
-        for doc in documents
-    }
-    store.save(config.index_path, meta=store.meta)
+
+    store.meta = _index_meta(config, store.dim, mode)
+    store.save(path, meta=store.meta)
     return store
 
 
-def _index_meta(config: Config, dim: int) -> dict:
+def _index_meta(config: Config, dim: int | None, mode: str = "flat") -> dict:
     """What an index must agree with to be safely reused.
 
     Chunk size and overlap change which text each vector represents, and the
     embedding model changes what the vectors mean. Reusing an index across any
     of those returns plausible nonsense rather than an error, because the
-    dimensions still line up.
+    dimensions still line up. `index_mode` is the same argument one level up:
+    a flat index loads cleanly against a config expecting RAPTOR, and the only
+    symptom is worse answers.
     """
-    return {
+    meta = {
         "embedding_model": config.embedding_model,
         "chunk_tokens": config.chunk_tokens,
         "chunk_overlap": config.chunk_overlap,
         "dim": dim,
+        "index_mode": mode,
     }
+    if mode == "raptor":
+        meta["raptor_max_depth"] = config.raptor_max_depth
+        meta["raptor_cluster_size"] = config.raptor_cluster_size
+    return meta
 
 
-def load_index(config: Config) -> VectorStore:
+def load_index(config: Config, mode: str = "flat") -> VectorStore:
     # dim is unknown until the file is read, and an index whose dim differs
     # already fails cleanly at search time, so it is left out of the check.
-    expected = _index_meta(config, dim=None)
+    expected = _index_meta(config, dim=None, mode=mode)
     expected.pop("dim")
-    return VectorStore.load(config.index_path, expect_meta=expected)
+    return VectorStore.load(index_path_for(config, mode), expect_meta=expected)
 
 
 def ask(

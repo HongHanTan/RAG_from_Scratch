@@ -1,6 +1,7 @@
 """Command line entry point.
 
     python -m rag index
+    python -m rag index --index-mode raptor
     python -m rag ask "what is reciprocal rank fusion?"
     python -m rag ask "..." --k 8 --trace
     python -m rag ask "..." --no-llm       # retrieval only, no API key needed
@@ -22,7 +23,13 @@ from pathlib import Path
 from rag.config import Config
 from rag.embedding import Embedder
 from rag.llm import GeminiLLM, LLMError
-from rag.pipeline import ask, build_index, load_index
+from rag.pipeline import (
+    INDEX_MODES,
+    ask,
+    build_index,
+    index_path_for,
+    load_index,
+)
 from rag.strategies import STRATEGY_NAMES
 from rag.trace import Trace
 
@@ -105,6 +112,10 @@ def _build_parser() -> argparse.ArgumentParser:
     index_parser = subparsers.add_parser("index", help="build the vector index")
     index_parser.add_argument("--chunk-tokens", type=int)
     index_parser.add_argument("--chunk-overlap", type=int)
+    index_parser.add_argument(
+        "--index-mode", choices=list(INDEX_MODES), default="flat",
+        help="flat chunks, one summary per document, or a RAPTOR tree",
+    )
 
     ask_parser = subparsers.add_parser("ask", help="answer a question")
     ask_parser.add_argument("question")
@@ -231,11 +242,19 @@ def _run(args, embedder_factory, llm_factory) -> int:
 
     if args.command == "index":
         embedder = embedder_factory(config)
-        store = build_index(config, embedder)
-        documents = len({c.doc_id for c in store.chunks})
+        # multirep and raptor summarise with the LLM; flat never calls it, so
+        # building one there would demand an API key the mode does not need.
+        llm = llm_factory(config) if args.index_mode != "flat" else None
+        store = build_index(config, embedder, llm=llm, mode=args.index_mode)
+        # A RAPTOR cluster summary carries a synthetic doc_id, so count
+        # documents over the level-0 chunks; multirep has none of those,
+        # and its nodes each carry their real document id.
+        source = [c for c in store.chunks if c.level == 0] or store.chunks
+        documents = len({c.doc_id for c in source})
         print(
             f"indexed {documents} documents into {len(store)} chunks "
-            f"({store.dim}-d) -> {config.index_path}"
+            f"({store.dim}-d, mode {args.index_mode}) -> "
+            f"{index_path_for(config, args.index_mode)}"
         )
         return 0
 
