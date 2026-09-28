@@ -151,6 +151,9 @@ rather than silently degrading to `direct`.
   one.
 - **`step-back`** — asks the LLM for one more general question about the
   underlying concept, and searches both the original and the general question.
+  The general question is obtained via structured output (a JSON `{"question":
+  "..."}` field), not parsed out of prose — see
+  [Routing and query construction](#routing-and-query-construction) below.
 - **`hyde`** — asks the LLM to write a short hypothetical passage that would
   answer the question, and searches with that passage's embedding (plus the
   original question, by default) on the idea that a fake answer is closer in
@@ -204,12 +207,34 @@ set (`evaluation/gold.json`), using `python -m evaluation.benchmark`:
 
 | Strategy | Recall@20 | MRR@20 | nDCG@20 | DocPrec@5 | LLM calls | Mean ms (warm) | Questions |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| hyde | 0.558 | 0.358 | 0.315 | 0.660 | 1.0 | 197 | 10 |
-| step-back | 0.475 | 0.196 | 0.225 | 0.460 | 1.0 | 59 | 10 |
-| rag-fusion | 0.392 | 0.140 | 0.184 | 0.560 | 1.0 | 94 | 10 |
-| multi-query | 0.375 | 0.190 | 0.208 | 0.400 | 1.0 | 89 | 10 |
-| decomposition | 0.333 | 0.194 | 0.187 | 0.600 | 3.4 | 103 | 10 |
-| direct | 0.325 | 0.103 | 0.137 | 0.560 | 0.0 | 41 | 10 |
+| hyde | 0.558 | 0.358 | 0.315 | 0.660 | 1.0 | 145 | 10 |
+| rag-fusion | 0.392 | 0.140 | 0.184 | 0.560 | 1.0 | 66 | 10 |
+| step-back | 0.383 | 0.136 | 0.170 | 0.400 | 1.0 | 43 | 10 |
+| multi-query | 0.375 | 0.190 | 0.208 | 0.400 | 1.0 | 66 | 10 |
+| decomposition | 0.333 | 0.194 | 0.187 | 0.600 | 3.4 | 81 | 10 |
+| direct | 0.325 | 0.103 | 0.137 | 0.560 | 0.0 | 28 | 10 |
+
+**Phase 4 changed one row.** Converting `step-back` to structured output (see
+below) changes the exact text the model produces for its general question —
+the JSON-constrained prompt reliably gets longer, more textbook-phrased
+questions back than the old free-form prompt did — which changes what gets
+retrieved. `Recall@20` moved from 0.475 to 0.383, `MRR@20` from 0.196 to
+0.136, `nDCG@20` from 0.225 to 0.170, `DocPrec@5` from 0.460 to 0.400. The
+other five rows are bit-for-bit unchanged, which is what rules out a
+routing- or construction-caused regression: both are off by default, so if
+they had leaked into the default path, more than one row would have moved.
+This one moved because the thing being converted — how step-back gets its
+question — is exactly what Phase 4 changed, not because of a bug. Chasing
+the old number back by hand-tuning the new prompt's wording would defeat the
+point of switching to structured output in the first place: the field's
+content is the model's choice, not something to be steered back to a
+specific score.
+
+Converting also uncovered a real accounting gap: `_CallCountingLLM` only
+intercepted `.generate()`, so step-back's move to `.structured()` bypassed
+the counter's override via `__getattr__` and briefly reported `0.0` LLM
+calls instead of `1.0` — silently understating its cost. Fixed by
+intercepting `.structured()` too; the row above already reflects the fix.
 
 Ran repeatedly (the full sweep, plus `multi-query` and `rag-fusion` run alone
 in both orders — see below); every metric column, `LLM calls` included, was
@@ -328,6 +353,110 @@ gain within the noise of a 10-question sample.
   a real bias: the questions and quotes were chosen with knowledge of how the
   corpus and chunker behave.
 
+## Routing and query construction
+
+Phase 4 adds three opt-in flags on `rag ask` that narrow *what gets searched*
+before a strategy decides *how*: `--route`, `--construct`, and
+`--semantic-prompt`. All three degrade to a safe default and record a note
+containing `degraded` if the model call fails or returns nothing usable —
+the benchmark's `check_not_degraded` treats that word as fatal, so a silent
+fallback can never be mistaken for a working feature.
+
+- **`--route`** (logical routing) asks the LLM which of the corpus's topical
+  collections could plausibly answer the question, via structured output
+  (`ROUTE_SCHEMA`), and restricts search to those before the strategy runs.
+  It needs the LLM and is rejected alongside `--no-llm`, the same way
+  `--strategy` other than `direct` is. Corpus documents are partitioned into
+  five topics, none holding more than half the 38 documents:
+
+  | Topic | Documents |
+  |---|---:|
+  | `retrieval-models` | 10 |
+  | `rag-systems` | 9 |
+  | `prompting-reasoning` | 8 |
+  | `evaluation-benchmarks` | 7 |
+  | `foundations` | 4 |
+
+- **`--construct`** (query construction) asks the LLM to infer a metadata
+  filter from the question itself — a date bound, an author, a topic — also
+  via structured output, and applies it as a mask over the candidate set
+  *before* top-k selection runs, so a filtered search still returns a full k
+  results when k documents survive the filter. It needs the LLM for the same
+  reason `--route` does, and is rejected the same way.
+- **`--semantic-prompt`** picks which answer-prompt variant to use (e.g.
+  "definition" vs. "mechanism") by embedding the question and comparing it
+  against embedded exemplar questions for each variant — no LLM call. It
+  stays allowed with `--no-llm`, since it costs only an embedding.
+
+### The demo, honestly
+
+```
+python -m rag ask "What did the RAPTOR paper say about clustering, from anything published before 2024?" --construct --trace
+```
+
+`--construct` correctly infers `published before 2024-01-01` from the
+question and applies it. RAPTOR is dated 2024-01-31 in this corpus's
+metadata, so that filter genuinely excludes the very paper the question
+names — this is the filter working as specified, not a bug. The retrieved
+chunks come from unrelated documents (MTEB and Instructor, both about
+clustering in a different sense), and the model's answer says plainly that
+"the provided context does not contain any information about the RAPTOR
+paper" and does not answer the question. A question that asks for a
+document explicitly excluded by its own date filter should come back empty
+rather than quietly answering from the wrong source, and it does.
+
+```
+python -m rag ask "How does ColBERT score a document?" --route --trace
+```
+
+Routes to `retrieval-models` (shown in the trace as `route: search
+retrieval-models`) and answers correctly from ColBERT and ColBERTv2 chunks.
+
+```
+python -m rag ask "How does ColBERT score a document?" --semantic-prompt --trace
+```
+
+Picks the `mechanism` prompt variant (`route: prompt mechanism (cosine
+0.103)`) with no LLM call for the routing decision itself, and answers using
+that prompt's "describe the mechanism step by step" framing.
+
+```
+python -m rag ask "q" --route --no-llm
+```
+
+Exits 1: `--no-llm cannot be combined with --route`.
+
+### Exemplar questions, not descriptions of them
+
+`--route` uses `GeminiLLM.structured` (the LLM case); `--semantic-prompt`
+uses `SemanticRouter`, which needs no LLM at all. `SemanticRouter` was first
+tried with `PROMPT_DESCRIPTIONS` — prose
+descriptions of what each prompt variant is for — matched against the
+question's embedding. That scored 5/9 on a small set of questions with known
+correct routing: "What is late interaction?" and "Define reciprocal rank
+fusion." both routed to the "comparison" variant instead of "definition",
+because matching a question against a *description of an intent* asks the
+embedder to encode intent, and a sentence embedder like MiniLM encodes topic
+instead. Replacing the descriptions with `PROMPT_EXEMPLARS` — actual
+question-shaped exemplars for each variant, not descriptions of them — scores
+7/9: matching a question against other questions compares like with like.
+This is the same insight HyDE rests on (embed something shaped like what
+you're searching for, not a description of it) applied to routing instead of
+retrieval.
+
+### Why these three aren't in the benchmark table
+
+Routing and query construction change *what is searched* — which documents
+are even candidates — not *how* a strategy searches them once the candidate
+set is fixed, which is what the six-strategy table above measures. Scoring
+`--route` or `--construct` against the same 10-question gold set would
+answer a different question ("did narrowing the corpus help find the gold
+passage" rather than "did this translation find it faster or more
+precisely"), and both are off by default in the benchmark for exactly that
+reason — confirmed here by re-running the benchmark after adding them: all
+six rows besides step-back's (changed for the reason above, not because
+anything leaked) are bit-for-bit identical to the Phase 3 table.
+
 ## Known limitations
 
 **`publish_date` values are approximate.** The dates in `data/metadata.json`
@@ -371,7 +500,7 @@ forbidden package is imported anywhere in the project.
 - [x] **Phase 1** — core pipeline
 - [x] **Phase 2** — query translation: multi-query, RAG-Fusion, decomposition, step-back, HyDE
 - [x] **Phase 3** — evaluation harness: Recall@k, MRR, nDCG, DocPrec@k
-- [ ] **Phase 4** — routing and query construction
+- [x] **Phase 4** — routing and query construction
 - [ ] **Phase 5** — multi-representation indexing and RAPTOR
 - [ ] **Phase 6** — ColBERT-style late interaction, and a retrieval inspector dashboard
 - [ ] **Phase 7** — full gold set and final benchmark table
