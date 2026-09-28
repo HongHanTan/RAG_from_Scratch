@@ -82,3 +82,15 @@ def test_retrieval_depth_below_top_k_is_rejected():
     import pytest
     with pytest.raises(ValueError, match="retrieval_depth"):
         Config(retrieval_depth=3, top_k=5)
+
+
+def test_raptor_defaults():
+    cfg = Config()
+    assert cfg.raptor_max_depth == 3
+    assert cfg.raptor_cluster_size == 8
+
+
+def test_raptor_max_depth_must_be_positive():
+    import pytest
+    with pytest.raises(ValueError, match="raptor_max_depth"):
+        Config(raptor_max_depth=0)

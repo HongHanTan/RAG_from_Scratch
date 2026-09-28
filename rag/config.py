@@ -49,6 +49,15 @@ class Config:
     rewrites retrieved only `top_k` chunks, fusion would have almost nothing
     to fuse and RAG-Fusion could not differ meaningfully from a plain union.
     """
+    raptor_max_depth: int = 3
+    """How many summary levels RAPTOR builds above the raw chunks.
+
+    Each level costs one LLM call per cluster, so depth is the main lever on
+    build cost. Three levels over 5,116 chunks is roughly 640 + 80 + 10 calls.
+    """
+
+    raptor_cluster_size: int = 8
+    """Target chunks per cluster, which sets how fast the tree narrows."""
     corpus_dir: Path = Path("data/corpus")
     metadata_path: Path = Path("data/metadata.json")
     index_path: Path = Path("data/index.npz")
@@ -75,6 +84,15 @@ class Config:
                 f"retrieval_depth ({self.retrieval_depth}) must be at least "
                 f"top_k ({self.top_k}); each query retrieves at depth and the "
                 "combined result is then truncated to top_k"
+            )
+        if self.raptor_max_depth < 1:
+            raise ValueError(
+                f"raptor_max_depth must be at least 1, got {self.raptor_max_depth}"
+            )
+        if self.raptor_cluster_size < 2:
+            raise ValueError(
+                f"raptor_cluster_size must be at least 2, got "
+                f"{self.raptor_cluster_size}"
             )
 
     @classmethod
