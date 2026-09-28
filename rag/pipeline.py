@@ -25,7 +25,7 @@ from rag.routing import SemanticRouter, logical_route
 from rag.store import VectorStore
 from rag.strategies import get_strategy
 from rag.strategies.base import StrategyContext
-from rag.trace import Trace
+from rag.trace import DEGRADED, Trace
 
 _MAX_NAMED_EXCLUSIONS = 5
 """Above this many excluded documents, the exclusion note reports only the
@@ -96,15 +96,24 @@ def build_index(config: Config, embedder, llm=None, mode: str = "flat") -> Vecto
     if mode != "flat" and llm is None:
         raise ValueError(f"index mode {mode} needs an llm to summarise with")
 
+    # A real trace, not None. The builders skip a document or a cluster whose
+    # summary fails, and without somewhere to record that the skip is silent:
+    # the first multirep build quietly indexed 36 of 38 documents because two
+    # summaries hit a transient rate limit, and "indexed 36 documents" looks
+    # perfectly fine unless you know it should be 38.
+    trace = Trace(question=f"build:{mode}")
+
     if mode == "multirep":
-        store = build_multi_representation(documents, embedder, llm)
+        store = build_multi_representation(documents, embedder, llm, trace)
     else:
         chunks = chunk_documents(
             documents, embedder.tokenizer, config.chunk_tokens, config.chunk_overlap
         )
         vectors = embedder.encode([chunk.text for chunk in chunks])
         if mode == "raptor":
-            chunks, vectors = build_raptor(chunks, vectors, embedder, llm, config)
+            chunks, vectors = build_raptor(
+                chunks, vectors, embedder, llm, config, trace
+            )
         store = VectorStore(vectors=vectors, chunks=chunks)
         store.doc_meta = {
             doc.doc_id: {
@@ -119,8 +128,34 @@ def build_index(config: Config, embedder, llm=None, mode: str = "flat") -> Vecto
         }
 
     store.meta = _index_meta(config, store.dim, mode)
+
+    # Record the loss in the index itself. An index missing part of the corpus
+    # must say so: every number measured against it is measured against a
+    # corpus that is not the one the README describes. `load_index` compares
+    # only the keys it asks for, so an extra key here is safe.
+    dropped = [note for note in trace.notes if DEGRADED in note]
+    if dropped:
+        store.meta["degraded"] = dropped
+    if mode == "multirep" and len(store) != len(documents):
+        store.meta["documents_missing"] = len(documents) - len(store)
+
     store.save(path, meta=store.meta)
     return store
+
+
+def index_warnings(store: VectorStore) -> list[str]:
+    """Human-readable warnings about an index that is not what it claims.
+
+    Returned rather than printed so the CLI, the benchmark and the tests can
+    each decide where they go.
+    """
+    warnings = []
+    missing = store.meta.get("documents_missing")
+    if missing:
+        warnings.append(f"{missing} document(s) missing: their summaries failed")
+    for note in store.meta.get("degraded", []):
+        warnings.append(note)
+    return warnings
 
 
 def _index_meta(config: Config, dim: int | None, mode: str = "flat") -> dict:

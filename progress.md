@@ -407,14 +407,14 @@ Plan: [docs/superpowers/plans/2026-09-28-phase-5-indexing-techniques.md](docs/su
 
 | # | Task | Status | Commits | Notes |
 |---|------|--------|---------|-------|
-| 1 | Synthetic node conventions (`level`, `-1` spans) | ⬜ | | |
-| 2 | K-means in NumPy | ⬜ | | |
-| 3 | Summarisation | ⬜ | | |
-| 4 | Multi-representation indexing | ⬜ | | |
-| 5 | RAPTOR tree building | ⬜ | | |
-| 6 | Index modes | ⬜ | | |
-| 7 | Retrieval against the new indexes | ⬜ | | |
-| 8 | Build, measure, write up | ⬜ | | |
+| 1 | Synthetic node conventions (`level`, `-1` spans) | ✅ | `327ace5` | 550 tests; real index still loads, 0 synthetic |
+| 2 | K-means in NumPy | ✅ | `35b30ad`, `0d13bb3` | 565 tests; determinism verified across processes |
+| 3 | Summarisation | ✅ | `dee1fcb` | 574 tests; LLM disk cache confirmed empirically |
+| 4 | Multi-representation indexing | ✅ | `2a69a25` | 588 tests; docstore round-trips, legacy index loads |
+| 5 | RAPTOR tree building | ✅ | `738d122` | 602 tests; 3 invariants verified independently |
+| 6 | Index modes | ✅ | `2f16596` | 613 tests; per-mode paths, no-llm guard raises |
+| 7 | Retrieval against the new indexes | ✅ | `34e2de6` | 620 tests; expansion covers all six strategies |
+| 8 | Build, measure, write up | 🔄 | `ce63de3` | 623 tests; `--index` flag done, builds running |
 | — | Final whole-branch review | ⬜ | | |
 
 **Key decision.** RAPTOR and multi-representation build their own index files
@@ -428,3 +428,20 @@ strategies. Each technique is measured as its own run via `--index`.
 span. A multi-representation index contains no such chunks — only 38 summaries — so
 Recall@20 may be exactly 0 there. That is the metric failing to see the technique, not
 the technique failing; `DocPrec@5` is the only column that means anything for it.
+
+### Open finding: silent document loss in multi-representation
+
+The first multirep build indexed **36 of 38 documents**. `ircot` and `sbert` were
+dropped and *nothing recorded it* — `build_index` never passes a `trace` to
+`build_multi_representation`, so its `trace.degraded(...)` branch is dead code in
+production. The CLI printed "indexed 36 documents", which looks fine unless you
+happen to know it should be 38.
+
+Both documents summarise successfully on retry, so the cause was transient
+(rate-limiting during the 38-call burst) and the existing backoff was not enough.
+The same hole applies to RAPTOR: failed cluster summaries are skipped with no
+record either.
+
+Being fixed before any number is reported: a partial index must announce itself and
+record the loss in `meta`, because an index quietly missing 5% of the corpus is
+exactly the "plausible nonsense, no error" failure `_index_meta` exists to prevent.

@@ -598,3 +598,34 @@ def test_asking_against_a_missing_index_reports_which_one(tiny_corpus, monkeypat
     assert main(["ask", "q", "--index", "raptor", "--no-llm"], **_factories()) == 1
     err = capsys.readouterr().err
     assert "raptor" in err
+
+
+def test_an_incomplete_index_build_warns_and_exits_nonzero(
+    tiny_corpus, monkeypatch, capsys
+):
+    # A partial index is not a successful build. Exiting 0 would let a
+    # scripted rebuild carry on against a corpus missing documents.
+    from rag.llm import LLMError
+
+    class FailingOnce:
+        def __init__(self):
+            self.calls = 0
+
+        def generate(self, prompt):
+            self.calls += 1
+            if self.calls == 1:
+                raise LLMError("429 rate limited")
+            return "a summary"
+
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    factories = _factories()
+    factories["llm_factory"] = lambda config: FailingOnce()
+    code = main(["index", "--index-mode", "multirep"], **factories)
+    assert code == 1
+    assert "WARNING" in capsys.readouterr().err
+
+
+def test_a_complete_index_build_exits_zero(tiny_corpus, monkeypatch, capsys):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    assert main(["index", "--index-mode", "flat"], **_factories()) == 0
+    assert "WARNING" not in capsys.readouterr().err

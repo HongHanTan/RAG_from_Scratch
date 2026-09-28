@@ -28,6 +28,7 @@ from rag.pipeline import (
     INDEX_MODES,
     ask,
     build_index,
+    index_warnings,
     index_path_for,
     load_index,
 )
@@ -261,6 +262,19 @@ def _run(args, embedder_factory, llm_factory) -> int:
             f"({store.dim}-d, mode {args.index_mode}) -> "
             f"{index_path_for(config, args.index_mode)}"
         )
+        # Loud, on stderr, and it changes the exit code. A partial index is
+        # not a successful build: every number later measured against it is
+        # measured against a corpus that is not the one the README describes.
+        warnings = index_warnings(store)
+        for warning in warnings:
+            print(f"WARNING: {warning}", file=sys.stderr)
+        if warnings:
+            print(
+                "WARNING: this index is incomplete — re-run to retry the "
+                "failures (successful summaries are cached, so it is cheap)",
+                file=sys.stderr,
+            )
+            return 1
         return 0
 
     store = load_index(config, mode=args.index)

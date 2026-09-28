@@ -468,3 +468,68 @@ def test_the_trace_records_a_raptor_index(tiny_corpus: Config):
     store = build_index(tiny_corpus, FakeEmbedder(), llm=FakeLLM("s"), mode="raptor")
     trace = ask("q", store, FakeEmbedder(), FakeLLM(), tiny_corpus, generate=False)
     assert any("raptor" in n for n in trace.notes)
+
+
+# --- a partial index must announce itself ------------------------------------
+
+class _FailingOnceLLM:
+    """Fails the first summary, succeeds after -- a transient rate limit."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def generate(self, prompt):
+        self.calls += 1
+        if self.calls == 1:
+            from rag.llm import LLMError
+
+            raise LLMError("429 rate limited")
+        return f"summary {self.calls}"
+
+
+def test_a_dropped_document_is_recorded_in_the_index_meta(tiny_corpus: Config):
+    # The first real multirep build indexed 36 of 38 documents and nothing
+    # recorded it: build_index passed no trace, so the builder's
+    # trace.degraded(...) branch was dead code in production. The count alone
+    # ("indexed 36 documents") looks fine unless you know it should be 38.
+    store = build_index(
+        tiny_corpus, FakeEmbedder(), llm=_FailingOnceLLM(), mode="multirep"
+    )
+    assert len(store) == 1
+    assert store.meta["documents_missing"] == 1
+    assert any("degraded" in note for note in store.meta["degraded"])
+
+
+def test_a_complete_index_records_no_loss(tiny_corpus: Config):
+    store = build_index(
+        tiny_corpus, FakeEmbedder(), llm=FakeLLM("a summary"), mode="multirep"
+    )
+    assert "documents_missing" not in store.meta
+    assert "degraded" not in store.meta
+
+
+def test_index_warnings_describes_the_loss(tiny_corpus: Config):
+    from rag.pipeline import index_warnings
+
+    store = build_index(
+        tiny_corpus, FakeEmbedder(), llm=_FailingOnceLLM(), mode="multirep"
+    )
+    warnings = index_warnings(store)
+    assert warnings
+    assert any("missing" in w for w in warnings)
+
+
+def test_a_complete_index_has_no_warnings(tiny_corpus: Config):
+    from rag.pipeline import index_warnings
+
+    store = build_index(
+        tiny_corpus, FakeEmbedder(), llm=FakeLLM("a summary"), mode="multirep"
+    )
+    assert index_warnings(store) == []
+
+
+def test_recording_the_loss_does_not_break_the_provenance_check(tiny_corpus: Config):
+    # load_index compares only the keys _index_meta asks for, so the extra
+    # "degraded" key must not make a partial index unloadable.
+    build_index(tiny_corpus, FakeEmbedder(), llm=_FailingOnceLLM(), mode="multirep")
+    assert len(load_index(tiny_corpus, mode="multirep")) == 1
