@@ -33,10 +33,10 @@ numbers lie:
   `rag/llm.py`'s on-disk cache. Whichever strategy `STRATEGY_NAMES` happens to
   list first pays for every rewrite; the other gets them all as free cache
   hits. Reordering the tuple would swap which one "looks fast". `LLM calls` is
-  the count of `.generate()` calls a strategy makes per question regardless of
-  whether the cache served it, via a small counting wrapper
-  (`_CallCountingLLM`) around the LLM. It cannot be perturbed by cache state
-  or strategy order, and it is the real cost driver.
+  the count of `.generate()` and `.structured()` calls a strategy makes per
+  question regardless of whether the cache served it, via a small counting
+  wrapper (`_CallCountingLLM`) around the LLM. It cannot be perturbed by cache
+  state or strategy order, and it is the real cost driver.
 
 - **`Mean ms (warm)` is measured with every strategy's own cache already
   warm.** Each strategy runs over the gold set twice; only the second pass is
@@ -105,12 +105,18 @@ class _CallCountingLLM:
     cannot be perturbed by cache state or by which strategy happened to run
     (and therefore cache its prompt) first.
 
-    Everything but `.generate()` is left alone -- there is no need to
-    intercept it, since strategies only ever call `.generate(prompt)` on the
-    LLM they are given. `__getattr__` forwards anything else to the wrapped
-    LLM, so an attribute access that would work on the real LLM (a diagnostic
-    such as `.call_count`, say) still works through this wrapper instead of
-    failing only when the benchmark is what's asking.
+    `.generate()` and `.structured()` are both intercepted -- Phase 4's
+    logical routing and step-back's structured output both ask the model for
+    something via `.structured()` rather than `.generate()`, and that call is
+    exactly as real a cost as a `.generate()` call. Leaving it to
+    `__getattr__` would forward it straight to the wrapped LLM's own
+    `.structured()`, which calls that LLM's own `.generate()` internally and
+    bypasses this class's override entirely -- silently under-reporting cost
+    for any strategy that switches to structured output. Everything else is
+    left alone: `__getattr__` forwards anything else to the wrapped LLM, so an
+    attribute access that would work on the real LLM (a diagnostic such as
+    `.call_count`, say) still works through this wrapper instead of failing
+    only when the benchmark is what's asking.
     """
 
     def __init__(self, llm) -> None:
@@ -120,6 +126,10 @@ class _CallCountingLLM:
     def generate(self, prompt: str) -> str:
         self.logical_call_count += 1
         return self._llm.generate(prompt)
+
+    def structured(self, prompt: str, schema: dict) -> dict:
+        self.logical_call_count += 1
+        return self._llm.structured(prompt, schema)
 
     def __getattr__(self, name: str):
         return getattr(self._llm, name)

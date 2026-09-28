@@ -133,6 +133,21 @@ def test_counting_llm_does_not_alter_the_returned_text():
     assert llm.generate("anything") == "exact text"
 
 
+def test_counting_llm_counts_structured_calls_too():
+    # Structured output (logical routing, step-back) asks the model for
+    # something exactly as real a cost as .generate() does. Left to
+    # __getattr__, .structured() would forward straight to the wrapped LLM's
+    # own .structured(), which calls that LLM's own .generate() internally
+    # and never touches this wrapper's counter -- silently under-reporting
+    # cost for any strategy that uses structured output.
+    from evaluation.benchmark import _CallCountingLLM
+
+    llm = _CallCountingLLM(FakeLLM('{"question": "general?"}'))
+    result = llm.structured("prompt", {"type": "object"})
+    assert result == {"question": "general?"}
+    assert llm.logical_call_count == 1
+
+
 def test_counting_llm_forwards_other_attributes_to_the_wrapped_llm():
     # Only .generate() is intercepted; anything else must still reach the
     # real LLM instead of failing only when the benchmark is what's asking.
