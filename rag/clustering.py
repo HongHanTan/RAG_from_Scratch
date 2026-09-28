@@ -30,9 +30,13 @@ def kmeans(
 ) -> np.ndarray:
     """Cluster `vectors` into at most `k` groups, returning integer labels.
 
-    Empty clusters are left empty rather than re-seeded: re-seeding makes the
-    result depend on iteration order in ways that defeat the seeding, and a
-    cluster nobody joined simply contributes no summary node.
+    Empty clusters are left empty rather than re-seeded. A cluster nobody
+    joined simply contributes no summary node, and re-seeding would make the
+    labelling unstable under small input changes, because the number of RNG
+    draws would then depend on how many clusters happened to empty. (It would
+    not break reproducibility — a re-seed from this same seeded generator is
+    still bit-identical run to run — so stability, not determinism, is the
+    reason.)
     """
     if k < 1:
         raise ValueError(f"k must be at least 1, got {k}")
