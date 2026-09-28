@@ -35,7 +35,7 @@ def logical_route(
 ) -> tuple[str, ...]:
     """Which collections to search. An empty tuple means all of them."""
     if llm is None:
-        trace.note("logical routing needs an LLM; degraded to searching everything")
+        trace.degraded("logical routing needs an LLM", "searching everything")
         return ()
 
     described = "\n".join(
@@ -46,14 +46,12 @@ def logical_route(
         with trace.stage("route"):
             parsed = llm.structured(prompt, ROUTE_SCHEMA)
     except LLMError as exc:
-        trace.note(f"logical routing failed: {exc}; degraded to searching everything")
+        trace.degraded(f"logical routing failed: {exc}", "searching everything")
         return ()
 
     chosen = tuple(t for t in parsed.get("topics", []) if t in topics)
     if not chosen:
-        trace.note(
-            "logical routing chose nothing valid; degraded to searching everything"
-        )
+        trace.degraded("logical routing chose nothing valid", "searching everything")
         return ()
     trace.add_translation("route", f"search {', '.join(chosen)}")
     return chosen

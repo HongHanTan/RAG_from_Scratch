@@ -67,16 +67,7 @@ from rag.loader import load_documents
 from rag.pipeline import ask, load_index
 from rag.store import VectorStore
 from rag.strategies import STRATEGY_NAMES
-from rag.trace import Trace
-
-DEGRADED = "degraded"
-"""Every degradation path in `rag/` includes this word deliberately -- a
-strategy falling back to plain retrieval, logical routing falling back to
-searching everything, or query construction falling back to no filter. One
-check on the single word covers strategies, routing and query construction
-alike; matching only the full phrase "degraded to direct retrieval" would let
-a silent routing or filtering failure through uncounted, and the benchmark
-would report "routing does not help" when the real story is "routing broke"."""
+from rag.trace import DEGRADED, Trace
 
 # The answer prompt's real top_k, independent of the chunk metrics' cutoff.
 DOC_PRECISION_K = 5

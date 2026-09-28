@@ -93,7 +93,7 @@ def build_filter(question: str, llm, topics: tuple[str, ...], trace) -> Metadata
     while wrongly applying one can mask the answer out entirely.
     """
     if llm is None:
-        trace.note("query construction needs an LLM; degraded to no filter")
+        trace.degraded("query construction needs an LLM", "no filter")
         return MetadataFilter()
 
     prompt = FILTER_TEMPLATE.format(question=question, topics=", ".join(topics))
@@ -101,7 +101,7 @@ def build_filter(question: str, llm, topics: tuple[str, ...], trace) -> Metadata
         with trace.stage("construct"):
             parsed = llm.structured(prompt, FILTER_SCHEMA)
     except LLMError as exc:
-        trace.note(f"query construction failed: {exc}; degraded to no filter")
+        trace.degraded(f"query construction failed: {exc}", "no filter")
         return MetadataFilter()
 
     # A hallucinated topic would mask out the whole corpus, so drop unknowns.

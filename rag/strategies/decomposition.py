@@ -90,9 +90,8 @@ class DecompositionStrategy:
                     # One failed sub-question should not lose the others, but
                     # the strategy is now running on fewer sub-answers than
                     # the method specifies -- a genuine partial degradation.
-                    ctx.trace.note(
-                        f"sub-question failed, degraded to continuing without "
-                        f"it: {exc}"
+                    ctx.trace.degraded(
+                        f"sub-question failed: {exc}", "continuing without it"
                     )
                     continue
 

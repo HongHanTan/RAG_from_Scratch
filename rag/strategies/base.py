@@ -70,7 +70,7 @@ def degrade_to_direct(
     question: str, ctx: StrategyContext, reason: str
 ) -> StrategyResult:
     """Fall back to plain retrieval, recording why on the trace."""
-    ctx.trace.note(f"{reason}; degraded to direct retrieval")
+    ctx.trace.degraded(reason, "direct retrieval")
     ctx.trace.queries = [question]
     results = ctx.search([question], ctx.config.retrieval_depth)[0]
     return StrategyResult(retrieved=results[: ctx.config.top_k])

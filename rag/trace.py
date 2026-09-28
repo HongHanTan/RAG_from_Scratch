@@ -17,7 +17,16 @@ from typing import Iterator
 
 from rag.chunking import Chunk, RetrievedChunk
 
-__all__ = ["StageTiming", "RetrievedChunk", "Trace", "TranslationStep"]
+__all__ = ["DEGRADED", "StageTiming", "RetrievedChunk", "Trace", "TranslationStep"]
+
+DEGRADED = "degraded"
+"""The sentinel `evaluation/benchmark.py` hard-fails on.
+
+Every silent fallback in `rag/` must go through `Trace.degraded`, which
+writes this word, rather than a bare `Trace.note` call an author might
+forget to word correctly. `tests/test_degradation_notes.py` enforces that
+mechanically by walking the source for `.note(` calls on a trace and
+failing unless the call site is on an explicit, justified allowlist."""
 
 
 @dataclass
@@ -71,8 +80,24 @@ class Trace:
             self.timings.append(StageTiming(name=name, ms=elapsed_ms, depth=depth))
 
     def note(self, message: str) -> None:
-        """Record something the reader needs to know, such as a degradation."""
+        """Record something the reader needs to know.
+
+        For a fact about the run (retrieval-only, cache hit, nothing
+        matched). For a fallback, use `degraded` instead: the benchmark
+        hard-fails on that sentinel, and this method does not write it.
+        """
         self.notes.append(message)
+
+    def degraded(self, what: str, fallback: str) -> None:
+        """Record that something failed and the pipeline fell back.
+
+        Distinct from `note`, which records a fact for the reader. This
+        writes the sentinel the benchmark hard-fails on, so a silent
+        fallback cannot be measured as "the technique does not help" — a
+        failure this project hit for real in Phase 2. The word cannot be
+        forgotten because the method writes it.
+        """
+        self.note(f"{what}; {DEGRADED} to {fallback}")
 
     def add_translation(self, kind: str, text: str) -> None:
         """Record something a translation strategy produced."""
