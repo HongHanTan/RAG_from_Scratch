@@ -261,18 +261,29 @@ Plan: [docs/superpowers/plans/2026-09-28-phase-4-routing-and-query-construction.
 |---|------|--------|---------|-------|
 | 1 | Topic metadata | ✅ | `f3cec5b` | 9/9/8/8/4 across five topics |
 | 2 | Index carries document metadata | ✅ | `e4799f2` | 461 tests; index rebuilt |
-| 3 | Structured output on the LLM | 🔄 | | |
-| 4 | MetadataFilter + mask compilation | 🔄 | | |
-| 5 | Apply the mask before top-k | 🔄 | | |
-| 6 | Query construction | ⬜ | | |
-| 7 | Logical + semantic routing | ⬜ | | |
+| 3 | Structured output on the LLM | ✅ | `f2298e7` | |
+| 4 | MetadataFilter + mask compilation | ✅ | `c7518c2` | |
+| 5 | Apply the mask before top-k | ✅ | `02a55d0` | 495 tests; k results, not survivors | |
+| 6 | Query construction | 🔄 | | |
+| 7 | Logical + semantic routing | 🔄 | | |
 | 8 | Pipeline wiring | ⬜ | | widens the benchmark degradation check |
 | 9 | CLI, step-back via structured output, README | ⬜ | | deletes the prose heuristics |
 | — | Final whole-branch review | ⬜ | | |
 
 ### Phase 4 carried items
 
-- **Task 1, IMPORTANT — queued fix.** `natural_questions` is classified
+- **Tasks 3-5, Minor** — `_check_shape` treats a bool as a valid `integer`, since
+  `isinstance(True, int)` is True in Python. Latent only: no schema in the project
+  declares `integer` or `boolean` yet. Worth fixing before one does.
+- **Tasks 3-5, Minor** — `_extract_json_object`'s greedy `\{.*\}` spans first brace to
+  last, so a reply mentioning a brace before the real object fails to parse. It fails
+  *safe* (raises, caller degrades) rather than parsing the wrong object; the cost is
+  spurious degradation, not wrong output.
+- **Tasks 3-5, Minor** — author matching is case-insensitive substring, right for
+  "Khattab" against "Khattab and Zaharia" but over-broad for a one- or two-character
+  constraint. A note for Task 6's `build_filter`, which is the only producer.
+
+- **Task 1, IMPORTANT — FIXED** (`natural_questions` -> `retrieval-models`, index rebuilt). `natural_questions` is classified
   `evaluation-benchmarks`, but the document is Lee et al.'s ORQA paper, "Latent
   Retrieval for Weakly Supervised Open Domain Question Answering" — it *proposes* a
   retrieval method (pre-training a retriever with an Inverse Cloze Task), and belongs
