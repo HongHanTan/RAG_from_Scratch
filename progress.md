@@ -522,3 +522,27 @@ shorter than the rate limit it was backing off from. A fifth was mine in the
 build harness — a shell pipeline read `grep`'s exit code instead of python's,
 so the retry loop stopped on the first attempt believing an incomplete index
 was complete.
+
+---
+
+# Phase 6a — ColBERT Late Interaction: Progress
+
+Branch: `phase-6-colbert` (stacked on `phase-5-indexing`; none merged to `main` yet)
+Plan: [docs/superpowers/plans/2026-09-29-phase-6a-colbert-reranking.md](docs/superpowers/plans/2026-09-29-phase-6a-colbert-reranking.md)
+
+Phase 6 in the spec covers two independent subsystems, so it is split: 6a is the
+reranker, 6b is the dashboard. The dashboard displays reranked scores, so it goes
+second.
+
+| # | Task | Status | Commits | Notes |
+|---|------|--------|---------|-------|
+| 1 | Token embeddings without pooling | ⬜ | | |
+| 2 | MaxSim | ⬜ | | |
+| 3 | The reranker | ⬜ | | |
+| 4 | Pipeline and CLI wiring | ⬜ | | |
+| 5 | Measure and write up | ⬜ | | |
+
+**Expected to be a negative result, and that is fine.** These are MiniLM token
+vectors, not trained ColBERT weights, and MiniLM was trained for pooled sentence
+similarity rather than late interaction. The benchmark reports whatever it is; a
+measured negative with a mechanism beats an unmeasured technique.
