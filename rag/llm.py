@@ -108,6 +108,26 @@ def _evict_cache_for(llm: object, prompt: str) -> None:
         pass
 
 
+def _retry_after(exc: Exception) -> float:
+    """The delay the server asked for, in seconds, or 0.0 if it asked for none.
+
+    A 429 from the free tier carries a RetryInfo saying how long to wait, and
+    that number is the truth about when the quota window reopens. Pure
+    exponential backoff ignores it: five attempts total 31s, while the
+    per-minute limit routinely asks for 35-51s, so every retry fires inside
+    the closed window and the call fails having never waited long enough.
+    That is what dropped 9 cluster summaries from an otherwise complete
+    RAPTOR tree.
+
+    Capped at 90s so a server asking for an implausible delay cannot wedge a
+    build.
+    """
+    match = re.search(r"'retryDelay':\s*'(\d+(?:\.\d+)?)s'", str(exc))
+    if not match:
+        return 0.0
+    return min(float(match.group(1)) + 1.0, 90.0)
+
+
 class GeminiLLM:
     def __init__(
         self,
@@ -202,7 +222,7 @@ class GeminiLLM:
             except Exception as exc:       # transport, rate limit, server error
                 last_error = exc
                 if attempt < self.max_retries - 1:
-                    self._sleep(2.0 ** attempt)
+                    self._sleep(max(2.0 ** attempt, _retry_after(exc)))
 
         raise LLMError(
             f"gave up after {self.max_retries} attempts: {last_error}"

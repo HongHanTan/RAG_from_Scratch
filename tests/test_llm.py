@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from rag.llm import GeminiLLM, LLMError, cache_key
@@ -312,8 +314,6 @@ def test_a_request_timeout_is_configured_on_the_real_client():
     # the API can hold a call open for ten minutes, and five retries of that
     # is an hour for one summary. Without a timeout a long build stalls
     # instead of converging.
-    from pathlib import Path
-
     from google.genai import types
 
     from rag.llm import GeminiLLM
@@ -327,9 +327,68 @@ def test_a_request_timeout_is_configured_on_the_real_client():
 
 
 def test_the_timeout_defaults_to_thirty_seconds():
-    from pathlib import Path
-
     from rag.llm import GeminiLLM
 
     llm = GeminiLLM(model="m", api_key="k", cache_dir=Path("."))
     assert llm._client._api_client._http_options.timeout == 30000
+
+
+# --- honouring the server's retry delay --------------------------------------
+
+def test_retry_after_reads_the_servers_delay():
+    from rag.llm import _retry_after
+
+    exc = Exception("429 ... 'retryDelay': '48s'} ...")
+    assert _retry_after(exc) == 49.0  # +1s of slack
+
+
+def test_retry_after_is_zero_when_the_server_asks_for_nothing():
+    from rag.llm import _retry_after
+
+    assert _retry_after(Exception("503 UNAVAILABLE")) == 0.0
+
+
+def test_retry_after_is_capped():
+    from rag.llm import _retry_after
+
+    assert _retry_after(Exception("'retryDelay': '9999s'")) == 90.0
+
+
+def test_a_rate_limited_call_waits_as_long_as_the_server_asked():
+    # Exponential backoff alone totals 31s over five attempts, while the
+    # free tier's per-minute limit asks for 35-51s. Every retry then fires
+    # inside the still-closed window, which is how 9 cluster summaries were
+    # lost from an otherwise complete RAPTOR tree.
+    slept = []
+
+    class RateLimited:
+        class models:
+            @staticmethod
+            def generate_content(**kwargs):
+                raise RuntimeError("429 RESOURCE_EXHAUSTED 'retryDelay': '45s'")
+
+    llm = GeminiLLM(
+        model="m", api_key=None, cache_dir=Path("."), client=RateLimited(),
+        max_retries=3, sleep=slept.append,
+    )
+    with pytest.raises(LLMError):
+        llm.generate("hello")
+    assert all(s >= 46.0 for s in slept), slept
+
+
+def test_backoff_still_grows_when_no_delay_is_given():
+    slept = []
+
+    class Failing:
+        class models:
+            @staticmethod
+            def generate_content(**kwargs):
+                raise RuntimeError("503 UNAVAILABLE")
+
+    llm = GeminiLLM(
+        model="m", api_key=None, cache_dir=Path("."), client=Failing(),
+        max_retries=4, sleep=slept.append,
+    )
+    with pytest.raises(LLMError):
+        llm.generate("hello")
+    assert slept == [1.0, 2.0, 4.0]
