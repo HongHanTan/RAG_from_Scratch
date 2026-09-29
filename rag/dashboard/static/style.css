@@ -1,0 +1,257 @@
+/* Plain CSS for the retrieval inspector. No framework, no build step, no
+   remote font: the dashboard has to work with the network unplugged. */
+
+:root {
+  --ink: #111827;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --panel: #ffffff;
+  --page: #f6f7f9;
+  --accent: #2563eb;
+  --warn: #dc2626;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 1.5rem;
+  background: var(--page);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+h2 { font-size: 1.05rem; margin: 0 0 0.35rem; }
+h3 { font-size: 0.9rem; margin: 1rem 0 0.35rem; color: var(--muted); }
+
+.page-head { margin-bottom: 1rem; }
+.index-meta { margin: 0; color: var(--muted); font-size: 0.85rem; }
+
+/* --- controls ----------------------------------------------------------- */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.controls .grow { flex: 1 1 22rem; }
+.controls .narrow input { width: 5rem; }
+
+.controls .check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  padding-bottom: 0.45rem;
+}
+
+.controls input[type="text"],
+.controls input[type="number"],
+.controls select {
+  font: inherit;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.controls button {
+  font: inherit;
+  padding: 0.45rem 1.2rem;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.controls button:hover { background: #1d4ed8; }
+
+/* --- panels ------------------------------------------------------------- */
+
+.panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(28rem, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.9rem 1rem 1rem;
+  overflow-x: auto;
+}
+
+#chunk-table, #strategy-comparison { grid-column: 1 / -1; }
+
+.hint { margin: 0 0 0.6rem; color: var(--muted); font-size: 0.8rem; }
+.empty { color: var(--muted); font-style: italic; }
+
+.loading {
+  margin: 0.4rem 0;
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+.loading::before { content: "\25CF "; }
+
+.error {
+  margin: 0.4rem 0;
+  padding: 0.5rem 0.65rem;
+  border-left: 3px solid var(--warn);
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.85rem;
+}
+
+/* --- tables ------------------------------------------------------------- */
+
+table.grid {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.85rem;
+}
+
+table.grid th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--line);
+  padding: 0.35rem 0.5rem;
+}
+
+table.grid td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.4rem 0.5rem;
+  vertical-align: top;
+}
+
+td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+td.doc { white-space: nowrap; font-family: ui-monospace, Consolas, monospace; }
+td.text { color: #374151; }
+
+td.score { white-space: nowrap; }
+td.score .value { font-variant-numeric: tabular-nums; }
+
+/* The score kind is never optional next to the number: cosine, rrf and
+   maxsim live on different scales, and a bare figure invites a comparison
+   that is not valid. */
+.kind {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.notes {
+  margin: 0.7rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* --- translation -------------------------------------------------------- */
+
+ol.translation { margin: 0; padding-left: 1.2rem; }
+ol.translation li { margin-bottom: 0.45rem; }
+ol.translation .step-text { display: block; }
+
+ul.queries {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+  color: #374151;
+}
+
+/* --- timings ------------------------------------------------------------ */
+
+.timing {
+  display: grid;
+  grid-template-columns: 11rem 1fr 5rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+  font-size: 0.8rem;
+}
+
+.stage-name { font-family: ui-monospace, Consolas, monospace; }
+
+.bar-track {
+  display: block;
+  height: 10px;
+  background: #f1f5f9;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bar {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.stage-ms {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* --- projection --------------------------------------------------------- */
+
+#projection-canvas {
+  display: block;
+  width: 100%;
+  background: #fff;
+  border-radius: 6px;
+}
+
+.legend {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin: 0 0.3rem 0 0.9rem;
+  vertical-align: -1px;
+}
+
+.swatch.chunk { background: var(--accent); border-radius: 50%; }
+.swatch.query { background: var(--warn); transform: rotate(45deg); }
+
+.note {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+}

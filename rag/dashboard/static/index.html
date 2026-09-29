@@ -2,9 +2,97 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RAG retrieval inspector</title>
+<link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<p>Placeholder. The retrieval inspector page is built in the next task.</p>
+
+<header class="page-head">
+  <h1>Retrieval inspector</h1>
+  <p class="index-meta" id="index-meta">Reading index metadata&hellip;</p>
+</header>
+
+<form class="controls" id="query-form" autocomplete="off">
+  <label class="grow">Question
+    <input type="text" id="question" required
+           placeholder="How does ColBERT score a document?">
+  </label>
+  <label>Strategy
+    <select id="strategy">
+      <option value="direct">direct</option>
+    </select>
+  </label>
+  <label class="narrow">k
+    <input type="number" id="k" min="1" max="50" value="5">
+  </label>
+  <label class="check">
+    <input type="checkbox" id="rerank"> rerank
+  </label>
+  <button type="submit" id="run">Run</button>
+</form>
+
+<main class="panels">
+
+  <section class="panel" id="chunk-table">
+    <h2>Retrieved chunks</h2>
+    <p class="hint">Every score is shown with its kind. Cosine, rrf and maxsim
+      are different quantities on different scales and must not be compared to
+      each other as if they were one number.</p>
+    <p class="loading" data-loading hidden>Retrieving&hellip;</p>
+    <p class="error" data-error hidden></p>
+    <div data-body></div>
+  </section>
+
+  <section class="panel" id="strategy-comparison">
+    <h2>Strategy comparison</h2>
+    <p class="hint">Every strategy re-run against the same question. This panel
+      calls the LLM once per translating strategy, so it loads on its own and
+      the other four panels do not wait for it.</p>
+    <p class="loading" data-loading hidden>Running every strategy&hellip;</p>
+    <p class="error" data-error hidden></p>
+    <div data-body></div>
+  </section>
+
+  <section class="panel" id="translation-trace">
+    <h2>Query translation</h2>
+    <p class="hint">What the strategy produced before retrieval ran.</p>
+    <p class="loading" data-loading hidden>Retrieving&hellip;</p>
+    <p class="error" data-error hidden></p>
+    <div data-body></div>
+  </section>
+
+  <section class="panel" id="stage-timings">
+    <h2>Stage timings</h2>
+    <p class="hint">Milliseconds per stage. Indented stages are nested inside
+      the stage above them, so their time is already counted in it.</p>
+    <p class="loading" data-loading hidden>Retrieving&hellip;</p>
+    <p class="error" data-error hidden></p>
+    <div data-body></div>
+  </section>
+
+  <section class="panel" id="vector-projection">
+    <h2>Vector projection</h2>
+    <p class="hint">A 2D projection of the embedding space by PCA
+      (<code>np.linalg.svd</code>): the retrieved chunks and the query, placed
+      by the same transform. This is a projection of the embeddings,
+      <strong>not the space itself</strong> &mdash; 384 dimensions do not fit
+      in 2, nearly all of the geometry is discarded, and clusters or distances
+      you think you see here may not exist in the real space.</p>
+    <p class="loading" data-loading hidden>Projecting&hellip;</p>
+    <p class="error" data-error hidden></p>
+    <div data-body>
+      <canvas id="projection-canvas" height="340"></canvas>
+      <p class="legend">
+        <span class="swatch chunk"></span> retrieved chunk (numbered by rank)
+        <span class="swatch query"></span> query (cross)
+      </p>
+      <p class="note" id="projection-note"></p>
+    </div>
+  </section>
+
+</main>
+
+<script src="/static/app.js"></script>
 </body>
 </html>
