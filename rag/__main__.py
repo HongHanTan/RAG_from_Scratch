@@ -9,6 +9,8 @@
     python -m rag ask "..." --strategy decomposition --decomposition-mode independent
     python -m rag ask "..." --strategy hyde --retrieval-depth 30
     python -m rag ask "..." --index multirep
+    python -m rag dashboard                # http://127.0.0.1:8000
+    python -m rag dashboard --port 8765 --index raptor
 
 The embedder and LLM are built by injected factories so the CLI can be tested
 without loading a model or holding a key. `--strategy` other than `direct`
@@ -173,7 +175,37 @@ def _build_parser() -> argparse.ArgumentParser:
         help="which index to search (default: flat)",
     )
 
+    dashboard_parser = subparsers.add_parser(
+        "dashboard", help="serve the read-only retrieval inspector"
+    )
+    dashboard_parser.add_argument(
+        "--host", default="127.0.0.1",
+        help="interface to bind (default: 127.0.0.1). The inspector has no "
+             "authentication and can spend Gemini quota, so it stays off the "
+             "network unless you ask for that.",
+    )
+    dashboard_parser.add_argument(
+        "--port", type=int, default=8000, help="port to listen on (default: 8000)"
+    )
+    dashboard_parser.add_argument(
+        "--index", choices=list(INDEX_MODES), default="flat",
+        help="which index to inspect (default: flat)",
+    )
+
     return parser
+
+
+def _serve(app, host: str, port: int) -> None:
+    """Run the server.
+
+    Split out as a module-level function so the CLI test can stub it:
+    `uvicorn.run` blocks until the process is interrupted, which a test
+    cannot call. uvicorn is imported here rather than at module scope so
+    `python -m rag ask` keeps working with the dashboard extra uninstalled.
+    """
+    import uvicorn
+
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 def _reconfigure_streams_for_utf8() -> None:
@@ -281,6 +313,33 @@ def _run(args, embedder_factory, llm_factory) -> int:
                 file=sys.stderr,
             )
             return 1
+        return 0
+
+    if args.command == "dashboard":
+        # Imported here, not at module scope, so the rest of the CLI runs
+        # with FastAPI uninstalled -- the dashboard is an optional extra.
+        from rag.dashboard.app import create_app
+
+        store = load_index(config, mode=args.index)
+        embedder = embedder_factory(config)
+        llm = None
+        try:
+            llm = llm_factory(config)
+        except LLMError as exc:
+            # Retrieval, timings and the projection all work without a key;
+            # only the LLM-backed strategies do not. Better to serve the
+            # panels that do work than to refuse to start.
+            print(
+                f"{exc}\nserving without an LLM: strategies other than "
+                "direct will fail",
+                file=sys.stderr,
+            )
+        app = create_app(store, embedder, llm, config)
+        print(
+            f"retrieval inspector on http://{args.host}:{args.port} "
+            f"({len(store)} chunks, index {args.index}) -- read-only, Ctrl+C to stop"
+        )
+        _serve(app, args.host, args.port)
         return 0
 
     store = load_index(config, mode=args.index)

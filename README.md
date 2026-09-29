@@ -819,6 +819,60 @@ The standing caveats apply unchanged: 10 questions, retrieval only (no answer
 quality), and a chunk-level gold set that is necessarily incomplete — which
 is why `DocPrec@5` is reported beside the chunk metrics.
 
+## The retrieval inspector
+
+Every number above is a summary. The inspector is the other view: one
+question, one run, and everything the pipeline actually did with it.
+
+```bash
+pip install -e ".[dashboard]"
+python -m rag dashboard                        # http://127.0.0.1:8000
+python -m rag dashboard --port 8765 --index raptor
+```
+
+Five panels, all fed by two `GET` endpoints:
+
+| Panel | Shows |
+|---|---|
+| Chunk table | rank, `score_kind` and raw score, document, chunk index, an excerpt |
+| Translation trace | what the strategy rewrote the question into, step by step |
+| Stage timings | a bar per stage from the same `Trace` the `--trace` flag prints |
+| Vector projection | the retrieved chunks and the query, in 2D |
+| Strategy comparison | the same question run through all six strategies |
+
+The first four are views of a *single* run, so they share one request to
+`/api/ask` — giving each its own endpoint would re-run retrieval three extra
+times and leave four panels describing four different runs. Comparison
+re-runs the question once per strategy and is much slower, so it is a second,
+independent request to `/api/compare` and each panel clears its own loading
+state: the chunk table paints while the LLM-backed strategies are still
+thinking.
+
+**The projection is 384 dimensions squeezed into 2, and must not be read as
+the embedding space.** It is PCA via `np.linalg.svd` — centre the points,
+keep the two directions of greatest variance — and those two directions
+preserve as much spread as any plane can, which is a far weaker promise than
+it looks. Distances in the scatter are not distances in the index, and
+apparent clusters may be an artefact of the two axes that survived. The panel
+says so on the page. The query marker is projected with the *same* transform
+as the chunks rather than its own, because a marker placed by a different
+transform would sit somewhere arbitrary relative to the points it is there to
+be compared against.
+
+**It is read-only and it binds `127.0.0.1`.** Every endpoint is a `GET`;
+mutating verbs return 405. Nothing in `rag/dashboard/` writes an index, a
+corpus or a cache entry — an inspector that can change the thing it inspects
+is a worse tool. It has no authentication and it spends Gemini quota on every
+strategy that rewrites a question, so it stays off the network unless you
+pass `--host` and mean it.
+
+No build step and no front-end framework: one `.html`, one `.css`, one `.js`
+of plain JavaScript served from disk, with no `<script src="http...">`. A
+framework fetched from a CDN is still a framework wrapper, and
+`tests/test_dashboard_static.py` fails if one appears. FastAPI and uvicorn are
+an optional extra, imported inside the `dashboard` branch of the CLI, so
+`python -m rag ask` still runs with neither installed.
+
 ## Known limitations
 
 **`publish_date` values are approximate.** The dates in `data/metadata.json`
@@ -870,7 +924,7 @@ forbidden package is imported anywhere in the project.
 - [x] **Phase 3** — evaluation harness: Recall@k, MRR, nDCG, DocPrec@k
 - [x] **Phase 4** — routing and query construction
 - [x] **Phase 5** — multi-representation indexing and RAPTOR
-- [ ] **Phase 6** — ColBERT-style late interaction, and a retrieval inspector dashboard
+- [x] **Phase 6** — ColBERT-style late interaction, and a retrieval inspector dashboard
 - [ ] **Phase 7** — full gold set and final benchmark table
 
 Design: [`docs/superpowers/specs/2026-09-27-rag-from-scratch-design.md`](docs/superpowers/specs/2026-09-27-rag-from-scratch-design.md)

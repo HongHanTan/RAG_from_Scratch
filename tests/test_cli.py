@@ -636,3 +636,34 @@ def test_ask_accepts_rerank(tiny_corpus, monkeypatch, capsys):
     main(["index"], **_factories())
     assert main(["ask", "q", "--rerank", "--no-llm"], **_factories()) == 0
     assert "maxsim" in capsys.readouterr().out
+
+
+def test_dashboard_subcommand_exists(tiny_corpus, monkeypatch):
+    # Parsed without starting a server: uvicorn.run blocks forever.
+    import rag.__main__ as cli
+
+    monkeypatch.setattr(cli, "load_config", lambda **kw: tiny_corpus)
+    started = {}
+
+    def fake_serve(app, host, port):
+        started["host"] = host
+        started["port"] = port
+
+    monkeypatch.setattr(cli, "_serve", fake_serve)
+    main(["index"], **_factories())
+    assert main(["dashboard", "--port", "9123"], **_factories()) == 0
+    assert started["port"] == 9123
+
+
+def test_the_dashboard_binds_localhost_by_default(tiny_corpus, monkeypatch):
+    # No authentication, and it can spend Gemini quota, so it must not be
+    # reachable from the network unless the operator asks for that.
+    import rag.__main__ as cli
+
+    monkeypatch.setattr(cli, "load_config", lambda **kw: tiny_corpus)
+    started = {}
+    monkeypatch.setattr(cli, "_serve",
+                        lambda app, host, port: started.update(host=host))
+    main(["index"], **_factories())
+    main(["dashboard"], **_factories())
+    assert started["host"] == "127.0.0.1"
