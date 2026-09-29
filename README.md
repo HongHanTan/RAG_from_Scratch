@@ -530,6 +530,146 @@ variant, not a candidate set, so it doesn't change what's retrieved at all
 and has nothing for the strategy table to measure. Both stay off by default
 in the benchmark for that reason, unlike `--route` above.
 
+## Indexing techniques
+
+Phases 1-4 all changed the *query*. These two change what goes **into** the
+index, and they are measured the same way: same gold set, same metrics.
+
+Each technique writes its own index file, selected with `--index-mode`:
+
+```
+python -m rag index --index-mode multirep   # 38 summaries + a docstore
+python -m rag index --index-mode raptor     # 5,116 chunks + a 730-node summary tree
+python -m rag ask "..." --index raptor --trace
+python -m evaluation.benchmark --index raptor
+```
+
+They are separate files on purpose. The benchmark scores gold spans
+positionally against `store.chunks`, so adding summary nodes to the default
+index would move all six baseline rows for reasons unrelated to the
+strategies. Keeping them apart is what makes the comparison below mean
+anything — and the flat table reproduces its Phase 2-4 numbers to three
+decimals, which is the check that it worked.
+
+### Multi-representation: a 135x smaller index that retrieves better
+
+Summarise each document with Gemini, embed the *summary*, and keep the full
+text in a docstore. A summary matches, and the whole document is handed to
+the generator. 38 documents, 38 nodes.
+
+On the benchmark table it scores **0.000 Recall@20 for every strategy**. That
+number is worthless, and it is worth explaining why rather than filing it as
+a defeat:
+
+- **Recall@20 is 0.000 by construction.** The gold set marks chunks whose
+  character span overlaps an answering passage. A summary node is generated
+  text with no position in any document, so it can never satisfy a span. The
+  metric cannot see this technique at all.
+- **DocPrec@5 is capped at 0.200.** The index holds exactly one node per
+  document, so at most one of any top 5 can be the gold document. Flat can
+  reach 1.0. The measured 0.140-0.200 is the ceiling, not a score.
+
+The honest comparison is at the document level — did retrieval surface the
+right paper, and how high?
+
+| index | nodes | DocHit@1 | DocHit@5 | DocMRR |
+|---|---:|---:|---:|---:|
+| flat | 5,116 | 0.600 | 1.000 | 0.775 |
+| **multirep** | **38** | **0.700** | 1.000 | **0.808** |
+| raptor | 5,846 | 0.600 | 1.000 | 0.775 |
+
+**An index 135x smaller finds the right document more often than flat
+chunking**, and ranks it higher. That is the real result of this phase. A
+document summary is a better search key than any one of its paragraphs,
+because it describes the whole document rather than one corner of it.
+
+The cost is precision within a document: multirep returns 44,000 characters
+where flat returns 800, so it tells you *which paper* and leaves finding the
+passage to the generator's context window.
+
+### RAPTOR: the abstractions work, and they cost precision
+
+K-means written out in NumPy (`rag/clustering.py` — importing `sklearn` would
+defeat the exercise), applied recursively: cluster the chunk embeddings,
+summarise each cluster, embed those summaries, cluster *those*. Three levels
+over 5,116 chunks:
+
+```
+levels: {0: 5116, 1: 640, 2: 80, 3: 10}   # 730 summaries, 730 LLM calls
+```
+
+All levels live in one store, so a single search spans raw passages and
+abstractions together.
+
+**On the span-based gold set, RAPTOR loses across the board:**
+
+| Strategy | Recall@20 flat | raptor | MRR@20 flat | raptor | DocPrec@5 flat | raptor |
+|---|---:|---:|---:|---:|---:|---:|
+| hyde | 0.558 | 0.425 | 0.358 | 0.260 | 0.660 | 0.500 |
+| rag-fusion | 0.392 | 0.392 | 0.140 | 0.134 | 0.560 | 0.480 |
+| direct | 0.325 | 0.325 | 0.103 | 0.085 | 0.560 | 0.460 |
+| decomposition | 0.333 | 0.283 | 0.194 | 0.114 | 0.600 | 0.440 |
+| multi-query | 0.375 | 0.283 | 0.190 | 0.151 | 0.400 | 0.220 |
+| step-back | 0.383 | 0.175 | 0.136 | 0.058 | 0.400 | 0.140 |
+
+The mechanism is not mysterious. Summary nodes occupy top-k slots and can
+never be credited, so every slot one takes is a slot a creditable chunk did
+not get. Measured: **16.0% of top-20 slots** across the ten gold questions.
+
+**But the abstraction layer does exactly what it is designed to do.** Split
+the questions by kind, and the summaries activate on precisely the ones they
+are for:
+
+| question kind | share of top-20 that is a summary |
+|---|---:|
+| gold set (specific: "how does ColBERT score a document?") | 16.0% |
+| broad ("what problem do most of these techniques share?") | **50.0%** |
+
+Asked a broad question, half the retrieved context becomes abstractions —
+and they are apt. `raptor:1:571` reads *"the passages collectively share a
+central theme focused on evaluating, refining, and supplementing
+retrieval-augmented generation systems"*, which is an answer to a question no
+single 200-token chunk can answer.
+
+So the fair reading is not "RAPTOR is worse". It is **RAPTOR is built for a
+question this gold set does not contain.** Ten hand-written questions each
+have one answering passage in one paper; that is the case flat top-k already
+wins. Phase 7 expands the gold set to 30, and the right test for RAPTOR is
+whether those include questions whose answer lives across documents.
+
+Levels 2 and 3 are almost never retrieved (2 hits of 200 on the gold set, 1
+of 60 on broad questions). At 38 documents the tree is taller than the corpus
+justifies — `raptor_max_depth: 2` would likely lose nothing.
+
+### What building these actually cost
+
+Worth recording, because the write-ups usually omit it. The RAPTOR build is
+730 LLM calls, and getting them took three attempts and four bug fixes:
+
+- **The first build silently indexed 36 of 38 documents.** Two summaries hit
+  a transient rate limit and were skipped. `build_index` passed no `Trace`,
+  so the `trace.degraded(...)` branch was dead code and nothing recorded it —
+  the CLI printed "indexed 36 documents", which looks fine unless you know it
+  should be 38. One of the two, `ircot`, was the gold document for a question
+  multirep then "failed". Fixed: a partial index records the loss in its
+  `meta`, prints it, and exits 1.
+- **The second build produced a tree with no tree in it.** Quota exhaustion
+  mid-run killed levels 2 and 3 entirely, leaving one flat layer of 463
+  summaries. Recorded, this time, by the fix above.
+- **The API hung rather than failing.** During a Gemini 3.5 overload one call
+  returned after **691 seconds**; five retries of that is an hour per summary,
+  and the build managed three calls in ninety minutes. Fixed with a 30s
+  request timeout — calls then resolved in 8-45s.
+- **Exponential backoff was shorter than the rate limit.** The free tier
+  allows 15 requests/minute and its 429 carries a `retryDelay` of 35-51s;
+  five exponential retries total 31s, so every retry fired inside the closed
+  window. That cost 9 cluster summaries. Fixed by honouring the server's
+  `retryDelay`.
+
+None of these produced a stack trace. All four produced plausible output with
+quietly wrong contents, which is the failure mode this project keeps finding
+and the reason the `degraded` sentinel exists.
+
 ## Known limitations
 
 **`publish_date` values are approximate.** The dates in `data/metadata.json`
@@ -544,6 +684,12 @@ refusal above is genuine rather than staged.
 
 **Search is O(n) per query** and the whole index lives in memory. See the note
 on brute-force search above.
+
+**The gold set cannot score multi-representation, and penalises RAPTOR.** Its
+questions are specific and its answers are character spans, so a summary node
+is structurally uncreditable. Both techniques are reported above on
+document-level metrics as well, and Phase 7's larger gold set should include
+cross-document questions before either verdict is treated as final.
 
 ## Configuration
 
@@ -574,7 +720,7 @@ forbidden package is imported anywhere in the project.
 - [x] **Phase 2** — query translation: multi-query, RAG-Fusion, decomposition, step-back, HyDE
 - [x] **Phase 3** — evaluation harness: Recall@k, MRR, nDCG, DocPrec@k
 - [x] **Phase 4** — routing and query construction
-- [ ] **Phase 5** — multi-representation indexing and RAPTOR
+- [x] **Phase 5** — multi-representation indexing and RAPTOR
 - [ ] **Phase 6** — ColBERT-style late interaction, and a retrieval inspector dashboard
 - [ ] **Phase 7** — full gold set and final benchmark table
 

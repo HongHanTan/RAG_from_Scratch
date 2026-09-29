@@ -414,7 +414,7 @@ Plan: [docs/superpowers/plans/2026-09-28-phase-5-indexing-techniques.md](docs/su
 | 5 | RAPTOR tree building | ✅ | `738d122` | 602 tests; 3 invariants verified independently |
 | 6 | Index modes | ✅ | `2f16596` | 613 tests; per-mode paths, no-llm guard raises |
 | 7 | Retrieval against the new indexes | ✅ | `34e2de6` | 620 tests; expansion covers all six strategies |
-| 8 | Build, measure, write up | 🔄 | `ce63de3` | 623 tests; `--index` flag done, builds running |
+| 8 | Build, measure, write up | ✅ | `ce63de3`..`3323562` | 637 tests; all 3 indexes built, benchmarked, README written |
 | — | Final whole-branch review | ⬜ | | |
 
 **Key decision.** RAPTOR and multi-representation build their own index files
@@ -499,3 +499,26 @@ being 8.3% of the index, and none can be credited by a span-based gold set. Reca
 is unchanged at 0.325 while MRR falls 0.103 -> 0.094 and DocPrec@5 falls 0.560 ->
 0.500. This is with the crippled single-level tree, so it is not yet a verdict on
 RAPTOR.
+
+### Phase 5 resolved
+
+Both indexes are complete. RAPTOR is a real three-level tree
+(`{0: 5116, 1: 640, 2: 80, 3: 10}`, 730 summaries, 0 degraded); multirep holds
+all 38 documents. The flat benchmark reproduces its Phase 2-4 numbers to three
+decimals, confirming the baseline index was never touched.
+
+**Result.** Multi-representation wins at document level with a 135x smaller
+index (DocHit@1 0.700 vs 0.600, DocMRR 0.808 vs 0.775). RAPTOR loses on the
+span-based gold set — its summary nodes take 16% of top-20 slots and can never
+be credited — but its abstractions activate exactly as designed: 50% of slots
+on broad questions versus 16% on specific ones. The gold set contains no
+cross-document questions, which is the case RAPTOR exists for; Phase 7 should
+add some before the verdict is treated as final.
+
+Four bugs were found and fixed during the builds, none of which raised an
+error: the silent 36-of-38 document loss, a tree with no tree in it after a
+quota exhaustion, a 691-second hung API call, and an exponential backoff
+shorter than the rate limit it was backing off from. A fifth was mine in the
+build harness — a shell pipeline read `grep`'s exit code instead of python's,
+so the retry loop stopped on the first attempt believing an incomplete index
+was complete.
