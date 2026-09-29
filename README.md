@@ -762,17 +762,42 @@ top-20 order changed** by reranking. A reranker that reordered nothing would
 produce identical numbers and be indistinguishable from one switched off,
 so this is checked rather than assumed.
 
-**One confound, stated rather than buried.** `--rerank` also deepens the
-candidate pool from 20 to 50, because reranking can only promote something
-the dense pass already returned. For `direct` the two effects separate
-cleanly: the top 20 of a cosine-sorted 50 are exactly the top 20 of 20, so
-its +0.100 recall is the reranker pulling relevant chunks up from dense ranks
-21-50 and nothing else. For the five strategies that retrieve per sub-query
-and merge, the deeper depth also changes *what gets fused* before reranking
-sees it, so some part of their larger gains is pool depth rather than MaxSim.
-The honest reading is that late interaction over a deeper pool helps recall
-here; how much of that is the pool is not separable from these six rows
-alone.
+**The confound, and the ablation that removes it.** `--rerank` changes two
+things at once: it rescores with MaxSim, and it deepens the candidate pool
+from 20 to 50, because reranking can only promote something the dense pass
+already returned. For the five strategies that retrieve per sub-query and
+merge, a deeper pool also changes *what gets fused* before reranking sees
+it. So the table above cannot, by itself, say which of the two did the work.
+
+Measuring it needs a control that holds the pool at 50 and varies only
+whether MaxSim reorders it:
+
+| strategy | R@20 pool-50, no rerank | R@20 reranked | MaxSim alone |
+|---|---:|---:|---:|
+| rag-fusion | 0.375 | 0.650 | **+0.275** |
+| multi-query | 0.375 | 0.558 | +0.183 |
+| decomposition | 0.333 | 0.517 | +0.183 |
+| step-back | 0.383 | 0.500 | +0.117 |
+| direct | 0.325 | 0.425 | +0.100 |
+| hyde | 0.558 | 0.600 | +0.042 |
+| | | **mean** | **+0.150** |
+
+**The pool contributes almost nothing on its own.** Deepening 20 to 50
+without reranking leaves five of six strategies exactly where they started
+(`direct` 0.325, `multi-query` 0.375, `step-back` 0.383, `hyde` 0.558,
+`decomposition` 0.333 — all unchanged) and makes `rag-fusion` slightly
+*worse*, 0.392 to 0.375. That is not surprising in hindsight: taking the
+cosine top 20 out of a cosine-sorted 50 gives back the same 20, and for the
+merge strategies the extra candidates mostly add noise to the fusion. The
+entire gain is MaxSim.
+
+A first attempt at this ablation was wrong in a way worth recording, because
+the wrong version looked authoritative. It reranked a pool of 20 into 20
+slots and reported `+0.000` for every strategy — an apparently decisive
+result that MaxSim does nothing. But reranking 20 items into 20 slots is a
+*permutation*, and Recall@20 is set-based, so it cannot move whatever the
+reranker does. The number was a tautology, not a measurement. MRR, which is
+order-sensitive, moved in that same run — which is what exposed it.
 
 **Two limitations the technique carries as implemented here:**
 

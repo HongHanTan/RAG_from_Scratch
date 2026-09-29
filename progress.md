@@ -536,13 +536,28 @@ second.
 
 | # | Task | Status | Commits | Notes |
 |---|------|--------|---------|-------|
-| 1 | Token embeddings without pooling | ⬜ | | |
-| 2 | MaxSim | ⬜ | | |
-| 3 | The reranker | ⬜ | | |
-| 4 | Pipeline and CLI wiring | ⬜ | | |
-| 5 | Measure and write up | ⬜ | | |
+| 1 | Token embeddings without pooling | ✅ | `9bd1837` | 637 tests +9 slow; padding and special tokens excluded |
+| 2 | MaxSim | ✅ | `f74450c` | 648 tests; sum of per-query-token maxima |
+| 3 | The reranker | ✅ | `dbc263f` | 658 tests; ties keep dense order |
+| 4 | Pipeline and CLI wiring | ✅ | `c037ced`, `57ba5d4` | 666 tests; plan bug fixed (inert reranker) |
+| 5 | Measure and write up | ✅ | `7926a47` | 668 tests; + ablation isolating MaxSim |
 
-**Expected to be a negative result, and that is fine.** These are MiniLM token
-vectors, not trained ColBERT weights, and MiniLM was trained for pooled sentence
-similarity rather than late interaction. The benchmark reports whatever it is; a
-measured negative with a mechanism beats an unmeasured technique.
+**Expected a negative result; got a clearly positive one.** Mean Recall@20 across
+the six strategies rises 0.394 -> 0.542 and every strategy improves
+(rag-fusion +0.258, hyde +0.042). That was not the prediction — these are MiniLM
+token vectors, not trained ColBERT weights — which is exactly why it was worth
+measuring rather than asserting.
+
+**The gain is MaxSim, not the deeper pool.** `--rerank` also deepens the pool
+20 -> 50, so the two effects had to be separated. Holding the pool at 50 and
+varying only whether MaxSim reorders it gives a mean MaxSim contribution of
+**+0.150 Recall@20**; the pool alone leaves five of six strategies unchanged and
+makes rag-fusion slightly worse.
+
+A first ablation reported +0.000 for every strategy and looked decisive. It was a
+tautology: it reranked a 20-pool into 20 slots, and Recall@20 is set-based, so a
+permutation cannot move it. Recorded in the README because the wrong version was
+the more convincing-looking one.
+
+**Costs 37x latency** (61 ms -> 2283 ms mean) with no extra LLM calls, and hyde's
+MRR regresses 0.358 -> 0.242.
