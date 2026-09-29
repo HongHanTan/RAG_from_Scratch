@@ -49,6 +49,14 @@ class Config:
     rewrites retrieved only `top_k` chunks, fusion would have almost nothing
     to fuse and RAG-Fusion could not differ meaningfully from a plain union.
     """
+    rerank_depth: int = 50
+    """How many candidates late-interaction reranking rescores.
+
+    Deeper than `retrieval_depth` on purpose: reranking can only promote
+    something the dense pass already returned, so a shallow pool caps how
+    much it could possibly help.
+    """
+
     raptor_max_depth: int = 3
     """How many summary levels RAPTOR builds above the raw chunks.
 
@@ -84,6 +92,11 @@ class Config:
                 f"retrieval_depth ({self.retrieval_depth}) must be at least "
                 f"top_k ({self.top_k}); each query retrieves at depth and the "
                 "combined result is then truncated to top_k"
+            )
+        if self.rerank_depth < self.top_k:
+            raise ValueError(
+                f"rerank_depth ({self.rerank_depth}) must be at least "
+                f"top_k ({self.top_k})"
             )
         if self.raptor_max_depth < 1:
             raise ValueError(

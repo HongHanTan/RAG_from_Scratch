@@ -629,3 +629,10 @@ def test_a_complete_index_build_exits_zero(tiny_corpus, monkeypatch, capsys):
     monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
     assert main(["index", "--index-mode", "flat"], **_factories()) == 0
     assert "WARNING" not in capsys.readouterr().err
+
+
+def test_ask_accepts_rerank(tiny_corpus, monkeypatch, capsys):
+    monkeypatch.setattr("rag.__main__.load_config", lambda **kw: tiny_corpus)
+    main(["index"], **_factories())
+    assert main(["ask", "q", "--rerank", "--no-llm"], **_factories()) == 0
+    assert "maxsim" in capsys.readouterr().out

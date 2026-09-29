@@ -533,3 +533,51 @@ def test_recording_the_loss_does_not_break_the_provenance_check(tiny_corpus: Con
     # "degraded" key must not make a partial index unloadable.
     build_index(tiny_corpus, FakeEmbedder(), llm=_FailingOnceLLM(), mode="multirep")
     assert len(load_index(tiny_corpus, mode="multirep")) == 1
+
+
+# --- late-interaction reranking ---------------------------------------------
+
+def test_rerank_marks_the_results_maxsim(tiny_corpus: Config):
+    build_index(tiny_corpus, FakeEmbedder(), mode="flat")
+    store = load_index(tiny_corpus)
+    trace = ask("q", store, FakeEmbedder(), None, tiny_corpus,
+                generate=False, rerank=True)
+    assert trace.retrieved
+    assert all(r.score_kind == "maxsim" for r in trace.retrieved)
+
+
+def test_without_rerank_the_results_stay_cosine(tiny_corpus: Config):
+    build_index(tiny_corpus, FakeEmbedder(), mode="flat")
+    store = load_index(tiny_corpus)
+    trace = ask("q", store, FakeEmbedder(), None, tiny_corpus, generate=False)
+    assert all(r.score_kind == "cosine" for r in trace.retrieved)
+
+
+def test_rerank_deepens_the_candidate_pool(tiny_corpus: Config):
+    # Reranking a pool the same size as k can only reorder k items; the
+    # technique is supposed to pull a better item up from deeper down.
+    build_index(tiny_corpus, FakeEmbedder(), mode="flat")
+    store = load_index(tiny_corpus)
+    trace = ask("q", store, FakeEmbedder(), None, tiny_corpus,
+                generate=False, rerank=True)
+    assert any("rerank" in n for n in trace.notes)
+    note = next(n for n in trace.notes if "rerank" in n)
+    assert "candidates" in note
+
+
+def test_rerank_returns_at_most_k(tiny_corpus: Config):
+    build_index(tiny_corpus, FakeEmbedder(), mode="flat")
+    store = load_index(tiny_corpus)
+    trace = ask("q", store, FakeEmbedder(), None, tiny_corpus,
+                generate=False, rerank=True, k=2)
+    assert len(trace.retrieved) <= 2
+
+
+def test_rerank_works_with_a_translation_strategy(tiny_corpus: Config):
+    # Reranking must sit after the strategy, so it applies to all six
+    # rather than only the default path.
+    build_index(tiny_corpus, FakeEmbedder(), mode="flat")
+    store = load_index(tiny_corpus)
+    trace = ask("q", store, FakeEmbedder(), FakeLLM("a\nb"), tiny_corpus,
+                generate=False, rerank=True, strategy="multi-query")
+    assert all(r.score_kind == "maxsim" for r in trace.retrieved)

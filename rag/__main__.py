@@ -82,7 +82,8 @@ def format_trace(trace: Trace, verbose: bool, show_queries: bool = False) -> str
         chunk = item.chunk
         if verbose:
             lines.append(
-                f"  [{item.rank}] {chunk.chunk_id}  score {item.score:.3f}  "
+                f"  [{item.rank}] {chunk.chunk_id}  "
+                f"{item.score_kind} {item.score:.3f}  "
                 f"chars {chunk.char_start}-{chunk.char_end}"
             )
             lines.append(f"      {chunk.text[:160]}")
@@ -161,6 +162,11 @@ def _build_parser() -> argparse.ArgumentParser:
     ask_parser.add_argument(
         "--semantic-prompt", action="store_true",
         help="pick the answer prompt by embedding similarity (no LLM call)",
+    )
+    ask_parser.add_argument(
+        "--rerank", action="store_true",
+        help="rescore the top rerank_depth candidates with ColBERT-style "
+             "late interaction before answering",
     )
     ask_parser.add_argument(
         "--index", choices=list(INDEX_MODES), default="flat",
@@ -308,6 +314,7 @@ def _run(args, embedder_factory, llm_factory) -> int:
         route=args.route,
         construct=args.construct,
         semantic_prompt=args.semantic_prompt,
+        rerank=args.rerank,
     )
     print(format_trace(trace, verbose=args.trace, show_queries=args.queries))
     return 0

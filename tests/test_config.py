@@ -94,3 +94,13 @@ def test_raptor_max_depth_must_be_positive():
     import pytest
     with pytest.raises(ValueError, match="raptor_max_depth"):
         Config(raptor_max_depth=0)
+
+
+def test_rerank_depth_default():
+    assert Config().rerank_depth == 50
+
+
+def test_rerank_depth_must_be_at_least_top_k():
+    import pytest
+    with pytest.raises(ValueError, match="rerank_depth"):
+        Config(rerank_depth=3, top_k=5)

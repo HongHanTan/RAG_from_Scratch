@@ -18,6 +18,7 @@ from rag.indexing.multi_representation import (
     expand_to_documents,
 )
 from rag.indexing.raptor import build_raptor
+from rag.late_interaction import rerank as rerank_results
 from rag.loader import load_documents
 from rag.prompts import PROMPT_EXEMPLARS
 from rag.query_construction import MetadataFilter, build_filter, compile_mask
@@ -202,6 +203,7 @@ def ask(
     route: bool = False,
     construct: bool = False,
     semantic_prompt: bool = False,
+    rerank: bool = False,
 ) -> Trace:
     """Answer one question. Pass llm=None to retrieve without generating.
 
@@ -283,14 +285,23 @@ def ask(
         prompt_name = _get_semantic_router(embedder).route(question, trace)
 
     chosen_strategy = get_strategy(strategy, **(strategy_options or {}))
+    # Reranking can only promote a chunk the dense pass already returned,
+    # so the pool it draws from has to be deeper than the answer. Both
+    # numbers have to move: `retrieval_depth` is how many each individual
+    # query fetches, but every strategy ends with `retrieved[:top_k]`, so
+    # leaving `top_k` at the answer size would hand the reranker exactly the
+    # k items it is supposed to be reordering *into* -- inert, and
+    # indistinguishable in the benchmark from reranking that does not work.
+    pool = max(config.rerank_depth, effective_k) if rerank else effective_k
+    depth = config.rerank_depth if rerank else config.retrieval_depth
     ctx = StrategyContext(
         store=store,
         embedder=embedder,
         llm=llm,
         config=replace(
             config,
-            top_k=effective_k,
-            retrieval_depth=max(config.retrieval_depth, effective_k),
+            top_k=pool,
+            retrieval_depth=max(depth, pool),
         ),
         trace=trace,
         mask=mask,
@@ -311,6 +322,18 @@ def ask(
         )
     elif any(c.is_synthetic for c in store.chunks):
         trace.note("index mode raptor: search spans raw chunks and summaries")
+
+    # After the strategy, so all six benefit rather than only the default
+    # path, and after expansion, so a multirep hit is reranked on its full
+    # document text rather than on its summary.
+    if rerank:
+        with trace.stage("rerank"):
+            result = replace(
+                result,
+                retrieved=rerank_results(
+                    question, result.retrieved, embedder, effective_k, trace
+                ),
+            )
 
     trace.retrieved = result.retrieved
 
