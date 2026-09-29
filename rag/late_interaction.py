@@ -18,7 +18,11 @@ Two limitations, kept in the README rather than glossed:
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
+
+from rag.chunking import RetrievedChunk
 
 
 def maxsim(query_tokens: np.ndarray, doc_tokens: np.ndarray) -> float:
@@ -41,3 +45,48 @@ def maxsim(query_tokens: np.ndarray, doc_tokens: np.ndarray) -> float:
             f"document {doc_tokens.shape[1]}"
         )
     return float((query_tokens @ doc_tokens.T).max(axis=1).sum())
+
+
+def rerank(
+    question: str,
+    retrieved: list[RetrievedChunk],
+    embedder,
+    k: int,
+    trace=None,
+) -> list[RetrievedChunk]:
+    """Rescore `retrieved` with MaxSim and return the best `k`, renumbered.
+
+    Falling back to the dense order on failure is recorded with the
+    `degraded` sentinel: reranking that silently did nothing would be
+    reported as a measured null result, which is a worse outcome than a
+    loud failure.
+    """
+    if not retrieved:
+        return []
+
+    try:
+        query_tokens = embedder.encode_tokens([question])[0]
+        doc_tokens = embedder.encode_tokens([r.chunk.text for r in retrieved])
+    except Exception as exc:                        # model or tokenizer failure
+        if trace is not None:
+            trace.degraded(f"reranking failed: {exc}", "dense order kept")
+        return [
+            replace(item, rank=rank)
+            for rank, item in enumerate(retrieved[:k], start=1)
+        ]
+
+    scored = [
+        (maxsim(query_tokens, tokens), item)
+        for tokens, item in zip(doc_tokens, retrieved)
+    ]
+    # Stable on ties, so an exact score tie keeps the dense ordering rather
+    # than depending on sort internals.
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+
+    out = [
+        replace(item, score=score, rank=rank, score_kind="maxsim")
+        for rank, (score, item) in enumerate(scored[:k], start=1)
+    ]
+    if trace is not None:
+        trace.note(f"rerank: {len(retrieved)} candidates scored by maxsim -> {len(out)}")
+    return out

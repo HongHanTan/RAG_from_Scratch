@@ -37,6 +37,14 @@ ALLOWLIST: dict[str, str] = {
         "absence is already the structural signal a reader or the benchmark "
         "needs. The cache-hit note is informational in the same way."
     ),
+    "late_interaction.py:rerank": (
+        "The note records how many candidates were rescored and how many "
+        "came back -- a fact about the work reranking actually did on a "
+        "successful run, not a fallback. It is only reached after MaxSim "
+        "has scored every candidate; the failure path above it, where the "
+        "embedder cannot produce token vectors and the dense order is kept, "
+        "calls trace.degraded instead."
+    ),
     "pipeline.py:ask": (
         "'retrieval only: no LLM configured' and the filter-matched-nothing "
         "note are both facts about how this run was invoked or what the "
