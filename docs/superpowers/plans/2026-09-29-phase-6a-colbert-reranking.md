@@ -719,7 +719,13 @@ In `rag/pipeline.py`, add `rerank: bool = False` to `ask`'s signature (after `se
 
 ```python
     # Reranking can only promote a chunk the dense pass already returned,
-    # so the pool it draws from has to be deeper than the answer.
+    # so the pool it draws from has to be deeper than the answer. Both
+    # knobs have to move: every strategy ends with
+    # `retrieved[: ctx.config.top_k]`, so deepening `retrieval_depth` alone
+    # would still hand the reranker exactly the k items it was meant to
+    # reorder into -- inert, and indistinguishable in the benchmark from
+    # reranking that does not work.
+    pool = max(config.rerank_depth, effective_k) if rerank else effective_k
     depth = config.rerank_depth if rerank else config.retrieval_depth
     ctx = StrategyContext(
         store=store,
@@ -727,8 +733,8 @@ In `rag/pipeline.py`, add `rerank: bool = False` to `ask`'s signature (after `se
         llm=llm,
         config=replace(
             config,
-            top_k=effective_k,
-            retrieval_depth=max(depth, effective_k),
+            top_k=pool,
+            retrieval_depth=max(depth, pool),
         ),
         trace=trace,
         mask=mask,
