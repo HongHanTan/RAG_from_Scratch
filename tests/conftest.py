@@ -119,6 +119,24 @@ class FakeEmbedder:
         norms[norms == 0] = 1.0
         return (out / norms).astype(np.float32)
 
+    def encode_tokens(self, texts: list[str], batch_size: int = 16) -> list:
+        """One row per whitespace token, CRC-seeded like `encode`.
+
+        Deterministic and unit-length, so MaxSim over it is meaningful
+        without loading a real model.
+        """
+        out = []
+        for text in texts:
+            words = text.split() or [text]
+            rows = np.zeros((len(words), self.dim), dtype=np.float32)
+            for i, word in enumerate(words):
+                seed = zlib.crc32(word.encode("utf-8"))
+                rows[i] = np.random.default_rng(seed).normal(size=self.dim)
+            norms = np.linalg.norm(rows, axis=1, keepdims=True)
+            norms[norms == 0] = 1.0
+            out.append((rows / norms).astype(np.float32))
+        return out
+
 
 class FakeLLM:
     """Records the prompts it is given and returns a canned answer."""

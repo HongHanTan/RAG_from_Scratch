@@ -101,3 +101,77 @@ def test_real_embedder_batching_matches_single_pass():
 def test_real_embedder_returns_empty_matrix_for_empty_input():
     embedder = Embedder("sentence-transformers/all-MiniLM-L6-v2")
     assert embedder.encode([]).shape == (0, 384)
+
+
+# --- token embeddings for late interaction -----------------------------------
+
+@pytest.mark.slow
+def test_encode_tokens_returns_one_matrix_per_text():
+    embedder = Embedder("sentence-transformers/all-MiniLM-L6-v2", max_length=64)
+    out = embedder.encode_tokens(["hello world", "a longer sentence here"])
+    assert len(out) == 2
+    assert all(m.ndim == 2 for m in out)
+
+
+@pytest.mark.slow
+def test_encode_tokens_keeps_every_position():
+    # The whole point: encode() collapses the sequence to one vector, this
+    # must not. A longer text must yield strictly more rows.
+    embedder = Embedder("sentence-transformers/all-MiniLM-L6-v2", max_length=64)
+    short, long = embedder.encode_tokens(["cat", "the cat sat on the mat today"])
+    assert long.shape[0] > short.shape[0]
+
+
+@pytest.mark.slow
+def test_encode_tokens_rows_are_unit_length():
+    # MaxSim is a dot product standing in for cosine, which is only valid
+    # when every row is already unit length.
+    embedder = Embedder("sentence-transformers/all-MiniLM-L6-v2", max_length=64)
+    matrix = embedder.encode_tokens(["hello world"])[0]
+    norms = np.linalg.norm(matrix, axis=1)
+    assert np.allclose(norms, 1.0, atol=1e-5)
+
+
+@pytest.mark.slow
+def test_encode_tokens_width_is_the_model_dim():
+    embedder = Embedder("sentence-transformers/all-MiniLM-L6-v2", max_length=64)
+    assert embedder.encode_tokens(["hello"])[0].shape[1] == embedder.dim
+
+
+@pytest.mark.slow
+def test_encode_tokens_excludes_padding():
+    # Batched together, the short text must not inherit the long one's
+    # padding: a padded row is a real vector and would win a max.
+    embedder = Embedder("sentence-transformers/all-MiniLM-L6-v2", max_length=64)
+    together = embedder.encode_tokens(["hi", "a considerably longer piece of text"])
+    alone = embedder.encode_tokens(["hi"])
+    assert together[0].shape == alone[0].shape
+
+
+@pytest.mark.slow
+def test_encode_tokens_excludes_special_tokens():
+    # [CLS] and [SEP] appear in every sequence, so they match across every
+    # pair at near-1.0 and add near-constant noise to every score.
+    embedder = Embedder("sentence-transformers/all-MiniLM-L6-v2", max_length=64)
+    ids = embedder.tokenizer("hello world")["input_ids"]
+    assert embedder.encode_tokens(["hello world"])[0].shape[0] == len(ids) - 2
+
+
+@pytest.mark.slow
+def test_encode_tokens_respects_max_length():
+    embedder = Embedder("sentence-transformers/all-MiniLM-L6-v2", max_length=16)
+    assert embedder.encode_tokens(["word " * 200])[0].shape[0] <= 16
+
+
+@pytest.mark.slow
+def test_encode_tokens_of_nothing_is_an_empty_list():
+    embedder = Embedder("sentence-transformers/all-MiniLM-L6-v2", max_length=64)
+    assert embedder.encode_tokens([]) == []
+
+
+@pytest.mark.slow
+def test_encode_tokens_is_deterministic():
+    embedder = Embedder("sentence-transformers/all-MiniLM-L6-v2", max_length=64)
+    a = embedder.encode_tokens(["repeatable text"])[0]
+    b = embedder.encode_tokens(["repeatable text"])[0]
+    assert np.array_equal(a, b)
