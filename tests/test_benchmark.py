@@ -445,3 +445,17 @@ def test_an_unknown_index_is_rejected():
 
     with pytest.raises(SystemExit):
         build_parser().parse_args(["--index", "nope"])
+
+
+# --- the --rerank flag --------------------------------------------------------
+
+def test_benchmark_accepts_rerank():
+    from evaluation.benchmark import build_parser
+
+    assert build_parser().parse_args(["--rerank"]).rerank is True
+
+
+def test_rerank_defaults_off():
+    from evaluation.benchmark import build_parser
+
+    assert build_parser().parse_args([]).rerank is False

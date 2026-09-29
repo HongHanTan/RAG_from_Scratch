@@ -146,6 +146,7 @@ def score_strategy(
     config: Config,
     k: int,
     route: bool = False,
+    rerank: bool = False,
 ) -> StrategyScore:
     """Run one strategy over every gold question and average the metrics.
 
@@ -178,6 +179,14 @@ def score_strategy(
     `llm` is wrapped in `_CallCountingLLM` so `llm_calls` counts every logical
     `.generate()` call, cache hit or miss.
 
+    `rerank=True` reranks each strategy's candidates with ColBERT-style late
+    interaction before the metrics are read off them (`ask(..., rerank=True)`),
+    so the reranked table has the same columns as the un-reranked one and the
+    two are directly comparable. `check_not_degraded` still applies: a
+    reranker that silently fell back to the dense order would report dense
+    numbers as reranked ones, which is the one failure mode this measurement
+    cannot tolerate.
+
     `route=True` runs every strategy with logical routing switched on ahead
     of it (`ask(..., route=True)`), narrowing the candidate set to the
     topics the router chooses before the strategy searches. `llm_calls` then
@@ -206,6 +215,7 @@ def score_strategy(
                 strategy=strategy,
                 generate=False,
                 route=route,
+                rerank=rerank,
             )
             check_not_degraded(trace)
             calls = counting_llm.logical_call_count if counting_llm is not None else 0
@@ -323,6 +333,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--rerank",
+        action="store_true",
+        help=(
+            "rescore each strategy's candidates with ColBERT-style late "
+            "interaction before scoring. Produces the same columns, so the "
+            "two tables are directly comparable -- that comparison is what "
+            "says whether late interaction helps."
+        ),
+    )
+    parser.add_argument(
         "--index",
         choices=list(INDEX_MODES),
         default="flat",
@@ -351,10 +371,21 @@ def main(argv: list[str] | None = None) -> int:
     selected = args.strategy or list(STRATEGY_NAMES)
     scores = []
     for strategy in selected:
-        print(f"running {strategy}{' (routed)' if args.route else ''}...", flush=True)
+        suffix = "".join(
+            [" (routed)" if args.route else "", " (reranked)" if args.rerank else ""]
+        )
+        print(f"running {strategy}{suffix}...", flush=True)
         scores.append(
             score_strategy(
-                strategy, gold, store, embedder, llm, config, args.k, route=args.route
+                strategy,
+                gold,
+                store,
+                embedder,
+                llm,
+                config,
+                args.k,
+                route=args.route,
+                rerank=args.rerank,
             )
         )
 
@@ -364,6 +395,7 @@ def main(argv: list[str] | None = None) -> int:
     # which index produced it, otherwise three tables of numbers are
     # indistinguishable once they leave the terminal.
     print(f"index: {args.index}")
+    print(f"rerank: {'on' if args.rerank else 'off'}")
     if args.route:
         print("routed (--route):")
     print(table)

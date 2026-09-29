@@ -670,6 +670,130 @@ None of these produced a stack trace. All four produced plausible output with
 quietly wrong contents, which is the failure mode this project keeps finding
 and the reason the `degraded` sentinel exists.
 
+## Late interaction: ColBERT-style reranking buys recall, at 37x the latency
+
+Dense retrieval compares one vector per query against one vector per chunk.
+A passage that answers a question in a single clause is represented by the
+average of every clause it contains, so the answering clause is diluted by
+everything around it. Late interaction (ColBERT) keeps every token on both
+sides and asks a narrower question — for each query term, how well does the
+*best-matching* term in this passage match it?
+
+That is MaxSim:
+
+```
+score(q, d) = sum over query tokens i of  max over doc tokens j of  (q_i . d_j)
+```
+
+Both sides are L2-normalised, so each inner product is a cosine and the max
+picks one document token per query token. `rag/late_interaction.py` is the
+whole implementation: `maxsim()` is a matrix product, a row-wise max and a
+sum; `rerank()` rescores a dense shortlist with it. `Embedder.encode_tokens`
+supplies the per-token matrices from the same MiniLM model with no pooling —
+no new dependency — dropping padding via the attention mask and `[CLS]`/
+`[SEP]` via the special-tokens mask. Special tokens are not a harmless
+constant: they appear in every sequence, so a query's `[CLS]` matches every
+document's `[CLS]` at near-1.0 and adds a *near*-constant term, which is
+noise on the ranking rather than a shift.
+
+Reranked scores carry `score_kind="maxsim"`, never mixed with cosine. A
+MaxSim score sums one max per query token, so it lands around 5-20 where a
+cosine lands around 0.5; printing both as "score" would make reranking look
+like a tenfold quality jump.
+
+```bash
+python -m rag ask "How does ColBERT score a document?" --rerank
+python -m evaluation.benchmark --index flat --rerank
+```
+
+Retrieval fetches `rerank_depth` (50) candidates, MaxSim rescores all of
+them, and the best 20 are what the metrics see. Un-reranked, k=20, flat index (the same six rows as the Phase 3 table
+above; `Mean ms (warm)` is re-measured in the same session as the
+reranked run below, so the two tables' timings are comparable to each
+other rather than to Phase 3's):
+
+| Strategy | Recall@20 | MRR@20 | nDCG@20 | DocPrec@5 | LLM calls | Mean ms (warm) | Questions |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| hyde | 0.558 | 0.358 | 0.315 | 0.660 | 1.0 | 117 | 10 |
+| rag-fusion | 0.392 | 0.140 | 0.184 | 0.560 | 1.0 | 61 | 10 |
+| step-back | 0.383 | 0.136 | 0.170 | 0.400 | 1.0 | 45 | 10 |
+| multi-query | 0.375 | 0.190 | 0.208 | 0.400 | 1.0 | 60 | 10 |
+| decomposition | 0.333 | 0.194 | 0.187 | 0.600 | 3.4 | 62 | 10 |
+| direct | 0.325 | 0.103 | 0.137 | 0.560 | 0.0 | 22 | 10 |
+
+Reranked (`--rerank`), same index, same gold set:
+
+| Strategy | Recall@20 | MRR@20 | nDCG@20 | DocPrec@5 | LLM calls | Mean ms (warm) | Questions |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| rag-fusion | 0.650 | 0.313 | 0.327 | 0.600 | 1.0 | 2286 | 10 |
+| hyde | 0.600 | 0.242 | 0.265 | 0.580 | 1.0 | 2329 | 10 |
+| multi-query | 0.558 | 0.279 | 0.298 | 0.580 | 1.0 | 2308 | 10 |
+| decomposition | 0.517 | 0.261 | 0.252 | 0.720 | 3.4 | 2255 | 10 |
+| step-back | 0.500 | 0.285 | 0.287 | 0.660 | 1.0 | 2248 | 10 |
+| direct | 0.425 | 0.151 | 0.179 | 0.560 | 0.0 | 2269 | 10 |
+
+Per-strategy `Recall@20` delta: `rag-fusion` +0.258, `decomposition` +0.184,
+`multi-query` +0.183, `step-back` +0.117, `direct` +0.100, `hyde` +0.042.
+Averaged over all six, `Recall@20` 0.394 → 0.542, `MRR@20` 0.187 → 0.255,
+`nDCG@20` 0.200 → 0.268, `DocPrec@5` 0.530 → 0.617. **Recall rises for every
+strategy**, and the ordering of the table changes: `rag-fusion` overtakes
+`hyde`, which had led every table in this README since Phase 2.
+
+**`hyde` is the one strategy reranking hurts where it counts.** Its recall
+edges up (0.558 → 0.600) while `MRR@20` falls 0.358 → 0.242, `nDCG@20` 0.315
+→ 0.265 and `DocPrec@5` 0.660 → 0.580. HyDE already writes a full
+hypothetical *answer* as its query, so its dense top-1 is usually right; a
+long generated query gives MaxSim many terms to sum over, each free to max
+against a different chunk, and that rewards chunks with broad topical
+coverage over the one chunk that actually answers. Reranking finds more
+relevant chunks for HyDE and puts them lower.
+
+**The latency is the result too, not a footnote.** `Mean ms (warm)` goes from
+22-117 ms to 2248-2329 ms — 61 ms to 2283 ms averaged over the six
+strategies, about **37x**, and 103x for `direct`, which had nothing else to
+pay for. Reranking runs a second forward pass over 50 chunks per question
+with every token position kept, and that is the whole bill: it costs no extra
+LLM call (`LLM calls` is identical in both tables), just local compute. The
+per-strategy spread collapses because the reranker's ~2.2 s dwarfs whatever
+the strategy itself was doing.
+
+**It is not inert:** measured directly, **10 of 10 gold questions had their
+top-20 order changed** by reranking. A reranker that reordered nothing would
+produce identical numbers and be indistinguishable from one switched off,
+so this is checked rather than assumed.
+
+**One confound, stated rather than buried.** `--rerank` also deepens the
+candidate pool from 20 to 50, because reranking can only promote something
+the dense pass already returned. For `direct` the two effects separate
+cleanly: the top 20 of a cosine-sorted 50 are exactly the top 20 of 20, so
+its +0.100 recall is the reranker pulling relevant chunks up from dense ranks
+21-50 and nothing else. For the five strategies that retrieve per sub-query
+and merge, the deeper depth also changes *what gets fused* before reranking
+sees it, so some part of their larger gains is pool depth rather than MaxSim.
+The honest reading is that late interaction over a deeper pool helps recall
+here; how much of that is the pool is not separable from these six rows
+alone.
+
+**Two limitations the technique carries as implemented here:**
+
+- **This reranks a shortlist; it does not index every token.** A full
+  late-interaction index stores one vector per token rather than per chunk —
+  roughly 100x the storage of the pooled 5,116-chunk index — and would need
+  its own approximate search over token vectors. Reranking a dense shortlist
+  is what is actually deployed in practice, and it inherits the dense pass's
+  ceiling: a chunk that never reaches the top 50 can never be promoted.
+- **These are MiniLM token vectors, not trained ColBERT weights.**
+  `all-MiniLM-L6-v2` was trained for pooled sentence similarity, not for
+  per-token late interaction, and there is no learned linear projection down
+  to ColBERT's usual 128 dimensions. A real ColBERT checkpoint is trained so
+  that individual token vectors are discriminative; these are borrowed from a
+  model optimised for their average. The gains above are from the mechanism
+  despite the weights, not from a faithful ColBERT.
+
+The standing caveats apply unchanged: 10 questions, retrieval only (no answer
+quality), and a chunk-level gold set that is necessarily incomplete — which
+is why `DocPrec@5` is reported beside the chunk metrics.
+
 ## Known limitations
 
 **`publish_date` values are approximate.** The dates in `data/metadata.json`
