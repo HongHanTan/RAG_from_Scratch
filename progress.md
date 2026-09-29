@@ -561,3 +561,43 @@ the more convincing-looking one.
 
 **Costs 37x latency** (61 ms -> 2283 ms mean) with no extra LLM calls, and hyde's
 MRR regresses 0.358 -> 0.242.
+
+---
+
+# Phase 6b — Retrieval Inspector Dashboard: Progress
+
+Plan: [docs/superpowers/plans/2026-09-29-phase-6b-dashboard.md](docs/superpowers/plans/2026-09-29-phase-6b-dashboard.md)
+
+| # | Task | Status | Commits | Notes |
+|---|------|--------|---------|-------|
+| 1 | The 2D projection | ✅ | `0fc3956`, `10920d0` | 678 tests; guard confirmed to scan rag/dashboard/ |
+| 2 | The read-only API | ✅ | `9d12b1a` | 696 tests; `import rag` stays FastAPI-free |
+| 3 | The page | ✅ | `0b2f3b3`, `973bc9d` | 710 tests; five panels, no CDN, no build step |
+| 4 | Serve it, and document it | ✅ | `d13b5ef` | 712 tests; binds 127.0.0.1, Phase 6 ticked |
+
+**Phase 6 complete.** 712 tests passing.
+
+`python -m rag dashboard` serves a read-only inspector at 127.0.0.1:8000 over the
+real 5,116-chunk index. Verified end to end: `/api/meta` reports the index, and
+`/api/ask` returns a trace whose projection has one coordinate pair per retrieved
+chunk plus the labelled note.
+
+**Placement decision.** The package sits at `rag/dashboard/`, not a top-level
+`dashboard/`, because `tests/test_no_frameworks.py` scans a fixed directory list
+and `pyproject.toml` packages `rag*`. A top-level package would have escaped both,
+so the project's central test would have silently stopped covering its newest
+code. Task 1 proves the guard scans it rather than assuming.
+
+**Two of my own test/comment defects, both found by executing the plan:**
+- `test_comparison_is_fetched_separately_from_ask` asserted `js.count("fetch(")
+  >= 2`. That failed a *correct* implementation using one shared helper, and would
+  have passed a wrong one that made two calls then chained them. Replaced with a
+  check of the two ways these requests actually couple, verified by sabotage.
+- The projection's axis-pad comment claimed it covers "fewer than three points or
+  identical points". It cannot: with the query stacked in and
+  `full_matrices=False`, `vt` has `min(n + 1, dim)` rows, so the pad only fires at
+  dim == 1 — unreachable for a 384-dim store.
+
+**One deviation accepted:** the dashboard serves with `llm=None` when no API key is
+present, mirroring `ask`. Retrieval, timings and the projection need no key, so
+refusing to start would have been worse.
