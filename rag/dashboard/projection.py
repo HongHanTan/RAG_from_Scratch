@@ -40,9 +40,13 @@ def project_2d(
     # full_matrices=False keeps this (n, min(n, dim)) rather than (dim, dim).
     _, _, vt = np.linalg.svd(centred, full_matrices=False)
 
-    # Fewer than two components exist when there are fewer than three points
-    # or the points are identical; pad so the caller always gets 2 columns
-    # rather than a ragged array it has to special-case.
+    # Only fires when the embeddings are 1-dimensional. Stacking the query
+    # in and passing full_matrices=False means `vt` has min(n + 1, dim) rows,
+    # so at dim >= 2 there are always two axes to project onto -- even for a
+    # single vector, or identical vectors, where the extra components are
+    # zero-variance and give finite zeros rather than NaN. Kept because
+    # returning a ragged array at dim == 1 would push the special case onto
+    # every caller, but it is unreachable for the 384-dimensional store.
     axes = vt[:2]
     if axes.shape[0] < 2:
         axes = np.vstack([axes, np.zeros((2 - axes.shape[0], axes.shape[1]))])
