@@ -505,9 +505,13 @@ naming **two or three** documents. Requirements for each:
   after every few additions rather than writing all ten and debugging at the
   end.
 - `why` states what the question is testing.
-- `expects` is the pre-registered prediction, one of: `raptor`, `multirep`,
-  `hyde`, `multi-query`, `rag-fusion`, `step-back`, `decomposition`,
-  `rerank`, `direct`.
+- `expects` is the pre-registered prediction, and must name a **query-side
+  strategy**: `direct`, `multi-query`, `rag-fusion`, `step-back`, `hyde` or
+  `decomposition`. Not `raptor`, `multirep` or `rerank` — `score_predictions`
+  compares strategies within one sweep of one index, so an index-side
+  prediction could never be scored a hit and would silently count as a miss.
+  Whether the index-side techniques help is answered by Task 4's per-subset
+  comparison instead, not by the scorecard.
 
 Draw on the corpus's real themes. It holds 38 papers across
 `retrieval-models`, `rag-systems`, `prompting-reasoning`,
@@ -816,7 +820,47 @@ for name, st in stores.items():
 "
 ```
 
-- [ ] **Step 7: Write the final README section**
+- [ ] **Step 7: Answer the question Phase 5 could not**
+
+Phase 5 reported that RAPTOR loses, and said the gold set contained no
+question it was built for. The ten cross-document questions are that
+question. Compare the indexes **on that subset alone**, where the whole
+argument lives:
+
+```
+python -c "
+from pathlib import Path
+from rag.__main__ import load_config
+from rag.embedding import Embedder
+from rag.llm import GeminiLLM
+from rag.loader import load_documents
+from rag.pipeline import load_index
+from evaluation.benchmark import score_strategy
+from evaluation.gold import load_gold
+cfg = load_config()
+docs = load_documents(cfg.corpus_dir, cfg.metadata_path)
+gold = load_gold(Path('evaluation/gold.json'), docs)
+cross = [q for q in gold if len(q.sources) > 1]
+single = [q for q in gold if len(q.sources) == 1]
+emb = Embedder(cfg.embedding_model, max_length=cfg.max_seq_tokens)
+llm = GeminiLLM(model=cfg.llm_model, api_key=cfg.api_key, cache_dir=cfg.cache_dir)
+flat = load_index(cfg); raptor = load_index(cfg, mode='raptor')
+print(f\"{'subset':16s} {'n':>3s} {'flat R@20':>10s} {'raptor R@20':>12s} {'delta':>8s}\")
+for label, subset in (('cross-document', cross), ('single-document', single)):
+    f = score_strategy('direct', subset, flat, emb, llm, cfg, k=20)
+    r = score_strategy('direct', subset, raptor, emb, llm, cfg, k=20)
+    print(f'{label:16s} {len(subset):3d} {f.recall_at_k:10.3f} {r.recall_at_k:12.3f} '
+          f'{r.recall_at_k - f.recall_at_k:+8.3f}')
+"
+```
+
+Report both rows. If RAPTOR still loses on the cross-document subset, say so
+plainly — that is a stronger result than Phase 5's, because it is measured on
+the case the technique was designed for rather than on one it was not. If it
+wins there and loses overall, that is the finding and both halves belong in
+the README.
+
+- [ ] **Step 8: Write the final README section**
 
 Replace the benchmark tables with the 30-question results. Required content:
 
@@ -838,7 +882,7 @@ Replace the benchmark tables with the 30-question results. Required content:
 
 Tick **Phase 7** in the roadmap.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add evaluation/benchmark.py README.md tests/
