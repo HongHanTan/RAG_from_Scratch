@@ -96,6 +96,228 @@
         "They struggle, however, when the necessary knowledge is either unavailable to the LLM or not up-to-date within its parameters"
       ],
       "why": "General question about a limitation, phrased without the paper's vocabulary."
+    },
+    {
+      "id": "sparse-dense-mismatch",
+      "question": "A relevant passage may share no words with the query. How does a learned sparse retriever attack that by expanding terms, and how does a dense dual encoder avoid the problem instead?",
+      "sources": [
+        {
+          "doc_id": "splade",
+          "quotes": [
+            "they suffer from the long standing vocabulary mismatch problem, where relevant documents might not contain terms that appear in the query",
+            "Experiments show that the expansion brings improvements w.r.t. to the purely lexical approach by increasing recall"
+          ]
+        },
+        {
+          "doc_id": "dpr",
+          "quotes": [
+            "Term-matching methods like BM25 are sensitive to highly selective keywords and phrases, while DPR captures lexical variations or semantic relationships better.",
+            "Such approaches complement the sparse vector methods as they can potentially give high similarity scores to semantically relevant text pairs, even without exact token matching"
+          ]
+        }
+      ],
+      "why": "Two named remedies for one problem, each stated only in its own paper: SPLADE never describes DPR's dual encoder and DPR never describes sparse expansion. The question has two clearly separable halves.",
+      "expects": "decomposition"
+    },
+    {
+      "id": "zeroshot-generalisation-gap",
+      "question": "What did the heterogeneous zero-shot retrieval benchmark conclude about dense retrievers trained on MS MARCO, and what unsupervised training recipe was proposed to close that gap?",
+      "sources": [
+        {
+          "doc_id": "beir",
+          "quotes": [
+            "Our results show BM25 is a robust baseline and re-ranking and late-interaction based models on average achieve the best zero-shot performances, however, at high computational costs",
+            "More efficient approaches e.g. based on dense or sparse embeddings can substantially underperform traditional lexical models like BM25. Overall, BM25 remains a strong baseline for zero-shot text retrieval."
+          ]
+        },
+        {
+          "doc_id": "contriever",
+          "quotes": [
+            "we explore the limits of contrastive learning as a way to train unsupervised dense retrievers and show that it leads to strong performance in various retrieval settings",
+            "our model achieves Recall@100 results competitive with BM25 on most of the BEIR benchmark"
+          ]
+        }
+      ],
+      "why": "The finding is only in the benchmark paper and the remedy only in the method paper. Vocabulary overlaps both abstracts heavily, so the test is coverage of both, not phrasing.",
+      "expects": "rag-fusion"
+    },
+    {
+      "id": "multihop-one-step-retrieval",
+      "question": "What makes a question unanswerable from a single retrieval, and what retrieval loop was proposed once that limitation was measured?",
+      "sources": [
+        {
+          "doc_id": "hotpotqa",
+          "quotes": [
+            "the questions require finding and reasoning over multiple supporting documents to answer",
+            "the system has to reason with information taken from more than one document to arrive at the answer"
+          ]
+        },
+        {
+          "doc_id": "ircot",
+          "quotes": [
+            "we observe that this one-step retrieve-and-read approach is insufficient for multi-step QA. Here, what to retrieve depends on what has already been derived, which in turn may depend on what was previously retrieved",
+            "We begin by retrieving a base set of paragraphs using the question as a query. Subsequently, we alternate between the following two steps"
+          ]
+        }
+      ],
+      "why": "A dataset paper defines the difficulty and a method paper answers it; neither contains the other half. The question is itself two-hop, which is what decomposition is for.",
+      "expects": "decomposition"
+    },
+    {
+      "id": "long-context-cost",
+      "question": "Why is handing a model the whole collection instead of retrieving from it a bad trade: what does processing a very long input cost, and how well does the model use the middle of one?",
+      "sources": [
+        {
+          "doc_id": "longformer",
+          "quotes": [
+            "the memory and computational requirements of self-attention grow quadratically with sequence length, making it infeasible (or very expensive) to process long sequences",
+            "we introduce the Longformer with an attention mechanism that scales linearly with sequence length, making it easy to process documents of thousands of tokens or longer"
+          ]
+        },
+        {
+          "doc_id": "lost_in_middle",
+          "quotes": [
+            "language model performance is highest when relevant information occurs at the very beginning (primacy bias) or end of its input context (recency bias), and performance significantly degrades when models must access and use information in the middle of their input context"
+          ]
+        }
+      ],
+      "why": "One paper gives the compute cost, the other the accuracy cost, and neither mentions the other. Phrased in everyday words that match neither paper's vocabulary, so a hypothetical answer should embed closer than the question does.",
+      "expects": "hyde"
+    },
+    {
+      "id": "reader-passage-fusion",
+      "question": "Once several passages have been retrieved, how do the two generator designs combine them: marginalising over documents versus fusing their encodings inside the decoder?",
+      "sources": [
+        {
+          "doc_id": "rag",
+          "quotes": [
+            "We propose two models that marginalize over the latent documents in different ways to produce a distribution over generated text. In one approach, RAG-Sequence, the model uses the same document to predict each target token. The second approach, RAG-Token, can predict each target token based on a different document."
+          ]
+        },
+        {
+          "doc_id": "fid",
+          "quotes": [
+            "The model thus performs evidence fusion in the decoder only, and we refer to it as Fusion-in-Decoder.",
+            "By processing passages independently in the encoder, but jointly in the decoder, this method differs from Min et al. 2020 and Lewis et al. 2020."
+          ]
+        }
+      ],
+      "why": "Two mechanisms for the same job, one per paper. Technical vocabulary matches both papers closely, so the difficulty is covering both rather than bridging a wording gap.",
+      "expects": "multi-query"
+    },
+    {
+      "id": "frozen-versus-trained-lm",
+      "question": "When retrieval is bolted onto a language model, what is gained by leaving the model's weights frozen, and what is gained by training the retriever and the model together?",
+      "sources": [
+        {
+          "doc_id": "replug",
+          "quotes": [
+            "RePlug simply prepends retrieved documents to the input for the frozen black-box LM",
+            "We use a training objective which prefers retrieving documents that improve language model perplexity, while treating the LM as a frozen, black-box scoring function."
+          ]
+        },
+        {
+          "doc_id": "atlas",
+          "quotes": [
+            "all models that include retrieval during pre-training strongly outperform the baseline without joint pre-training",
+            "we observe that jointly training the retriever leads to strong improvements"
+          ]
+        }
+      ],
+      "why": "An explicit contrast whose two sides live in different papers. The two halves are cleanly separable into sub-questions.",
+      "expects": "decomposition"
+    },
+    {
+      "id": "query-transformation-family",
+      "question": "Several methods change the text sent to the retriever rather than the retriever itself. What does each of them put in place of the user's original query?",
+      "sources": [
+        {
+          "doc_id": "hyde",
+          "quotes": [
+            "Given a query, HyDE first zero-shot instructs an instruction-following language model (e.g. InstructGPT) to generate a hypothetical document."
+          ]
+        },
+        {
+          "doc_id": "query_rewriting",
+          "quotes": [
+            "our proposed pipeline contains a query rewriting step in front of the retrieve-then-read module",
+            "The rewriter is trained by reinforcement learning using the LLM performance as a reward, learning to adapt the retrieval query to improve the reader on downstream tasks."
+          ]
+        },
+        {
+          "doc_id": "step_back",
+          "quotes": [
+            "We define a step-back question as a derived question from the original question at a higher level of abstraction."
+          ]
+        }
+      ],
+      "why": "Three papers, three substitutes for the query, and no paper names the other two. Three documents in the top twenty is the hardest coverage case in the set.",
+      "expects": "multi-query"
+    },
+    {
+      "id": "llm-instead-of-annotators",
+      "question": "Where can a large language model take the place of a human judge in a search pipeline: deciding the order of candidate passages, and deciding whether an answer is supported?",
+      "sources": [
+        {
+          "doc_id": "rankgpt",
+          "quotes": [
+            "we propose an alternative instructional permutation generation approach, instructing the LLMs to directly output the permutations of a group of passages"
+          ]
+        },
+        {
+          "doc_id": "ragas",
+          "quotes": [
+            "we put forward a suite of metrics which can be used to evaluate these different dimensions without having to rely on ground truth human annotations",
+            "When building a RAG system, we usually do not have access to human-annotated datasets or reference answers. We therefore focus on metrics that are fully self-contained and reference-free."
+          ]
+        }
+      ],
+      "why": "Ranking and evaluation are different papers with no cross-reference. The question says 'human judge' and 'supported' where the papers say 'permutation generation' and 'faithfulness', so the wording gap is wide.",
+      "expects": "hyde"
+    },
+    {
+      "id": "one-model-many-tasks",
+      "question": "A broad embedding benchmark found that no model was best everywhere. What did it conclude, and what single-model design was proposed so that one embedder could serve many tasks?",
+      "sources": [
+        {
+          "doc_id": "mteb",
+          "quotes": [
+            "We find that no particular text embedding method dominates across all tasks. This suggests that the field has yet to converge on a universal text embedding method",
+            "We find there to be no single best solution, with different models dominating different tasks."
+          ]
+        },
+        {
+          "doc_id": "instructor",
+          "quotes": [
+            "InstructOR is a single embedder that can generate text embeddings tailored to different downstream tasks and domains, without any further training.",
+            "It is trained on a multitask mixture of 330 diverse datasets with human-written task instructions (MEDI dataset, §2.3)."
+          ]
+        }
+      ],
+      "why": "A benchmark result and a modelling response, one in each paper. Half the vocabulary matches each paper, so a single embedding of the whole question sits between the two.",
+      "expects": "rag-fusion"
+    },
+    {
+      "id": "retriever-without-labels",
+      "question": "Nothing in the training data says which passage answers a question. What pseudo-task was used to bootstrap a retriever anyway, and what objective was later backpropagated through the retrieval step itself?",
+      "sources": [
+        {
+          "doc_id": "natural_questions",
+          "quotes": [
+            "Since this is impractical to learn from scratch, we pre-train the retriever with an Inverse Cloze Task.",
+            "In ICT, a sentence is treated as a pseudo-question, and its context is treated as pseudo-evidence."
+          ]
+        },
+        {
+          "doc_id": "realm",
+          "quotes": [
+            "using masked language modeling as the learning signal and backpropagating through a retrieval step that considers millions of documents",
+            "Learning this model end-to-end requires backpropagating through a retrieval step that considers an entire corpus of textual knowledge"
+          ]
+        }
+      ],
+      "why": "Two unsupervised signals for the same missing label, one per paper. Phrased without either paper's terms ('Inverse Cloze Task', 'masked language modeling'), so the question shares little vocabulary with the passages that answer it.",
+      "expects": "hyde"
     }
   ]
 }

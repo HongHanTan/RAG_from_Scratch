@@ -23,8 +23,11 @@ def test_the_gold_set_loads(corpus):
     assert load_gold(GOLD_PATH, corpus)
 
 
-def test_the_gold_set_has_ten_questions(corpus):
-    assert len(load_gold(GOLD_PATH, corpus)) == 10
+def test_the_gold_set_size_is_pinned(corpus):
+    # Pinned so a question cannot be lost, or quietly added, without a test
+    # changing alongside it. Phase 7 grows the set: ten original questions,
+    # ten cross-document ones here, and ten more in the next task.
+    assert len(load_gold(GOLD_PATH, corpus)) == 20
 
 
 def test_every_question_has_a_reason_recorded(corpus):
