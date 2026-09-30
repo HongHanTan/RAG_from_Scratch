@@ -610,10 +610,10 @@ Plan: [docs/superpowers/plans/2026-09-30-phase-7-full-gold-set.md](docs/superpow
 
 | # | Task | Status | Commits | Notes |
 |---|------|--------|---------|-------|
-| 1 | A gold question may name several documents | ⬜ | | |
-| 2 | Ten cross-document questions | ⬜ | | |
-| 3 | Ten technique-targeted questions | ⬜ | | |
-| 4 | The final benchmark | ⬜ | | |
+| 1 | A gold question may name several documents | ✅ | `cdcc1fc` | 725 tests; original ten byte-identical |
+| 2 | Ten cross-document questions | ✅ | `094648e` | 732 tests; predictions pre-registered |
+| 3 | Ten technique-targeted questions | ✅ | `eb69726` | 30 questions, 36/38 docs covered |
+| 4 | The final benchmark | ✅ | `dd5caa0`, `7f2a462` | 738 tests; two gaps, quota-limited |
 
 **The hazard this phase has to manage.** The spec says to choose the questions
 "with knowledge of what every technique does". That is deliberate — a gold set
@@ -638,3 +638,57 @@ case RAPTOR exists for, and why its Phase 5 verdict was unfair. Task 1
 generalises the schema, and its safety property is that the original ten must
 score byte-identically afterwards; otherwise the final table is measuring a
 schema change rather than the techniques.
+
+### Phase 7 results
+
+**Pre-registration held.** `git diff eb69726 HEAD -- evaluation/gold.json` is empty:
+no question was edited, reworded or removed after its result was seen.
+
+**RAPTOR's verdict did not change — it got worse, on its own home ground.**
+Verified independently:
+
+| subset | n | flat R@20 | raptor R@20 | delta |
+|---|---:|---:|---:|---:|
+| cross-document | 10 | 0.197 | 0.146 | **-0.051** |
+| single-document | 20 | 0.342 | 0.342 | +0.000 |
+
+Phase 5 concluded RAPTOR loses and could plead that the gold set held no question
+it was built for. That plea is now spent: given exactly those questions, RAPTOR is
+the only place it loses, and it ties everywhere else.
+
+**Four Phase 2-6 conclusions did not survive 30 questions:**
+- "multi-query's DocPrec@5 is worse than direct's" — reversed (0.460 vs 0.440)
+- "step-back beats direct on recall" — gone (0.300 vs 0.293)
+- "decomposition buys +0.008 recall for 3.4 calls" — sign flipped; now last of six,
+  0.015 *below* direct
+- "direct has the worst MRR" — it is third of six on 30 questions
+
+Also gone: Phase 6a's "recall rises for every strategy under reranking" (hyde falls
+0.512 -> 0.483) and its hyde MRR-collapse story (0.335 -> 0.332, flat). HyDE's lead
+survives: +0.219 over direct, against +0.233 on ten questions.
+
+**Prediction scorecard: 6/20 (30%).** Five questions were all-strategy ties, counted
+as misses; 6 of the 15 decisive ones hit. By technique: hyde 3/7, decomposition 1/5,
+**direct 0/4**, rag-fusion 1/2, multi-query 1/2. HyDE won or co-won 11 of the 15
+decisive questions, including five written to favour something else. The author's
+model of these techniques is worse than assumed, which is the finding the
+pre-registration existed to expose rather than hide.
+
+Three HyDE-targeted questions score 0.000 for every strategy — written to share
+little vocabulary with their gold passage, and they succeeded so well that nothing
+retrieves them. Left unedited by rule.
+
+**Multi-representation remains the one clear win**, at document level: 38 nodes
+beat 5,116 on DocHit@1 (0.467 vs 0.433), DocHit@5 (0.900 vs 0.800) and DocMRR
+(0.631 vs 0.594).
+
+### Two gaps, quota-limited
+
+The free tier's 500/day cap ran out mid-sweep. The agent stopped rather than let a
+strategy degrade, which is correct. Outstanding:
+- `decomposition` is missing from the raptor, multirep and reranked tables (it is
+  present in the flat table). Its sub-question prompts were uncached.
+- `--route` on 30 questions was not run at all (20 uncached routing calls).
+
+Both are documented in the README under "What could not be measured, and why".
+Nothing was estimated or interpolated. Fillable in one short run once quota resets.
