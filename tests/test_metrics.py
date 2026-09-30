@@ -121,3 +121,16 @@ def test_doc_precision_of_an_empty_result_list_is_zero():
 
 def test_doc_precision_ignores_results_beyond_k():
     assert doc_precision_at_k(["a", "b", "b", "b"], "a", k=1) == pytest.approx(1.0)
+
+
+def test_doc_precision_counts_any_gold_document():
+    # A cross-document question has several right answers; crediting only
+    # one of them would score a correct retrieval as a miss.
+    assert doc_precision_at_k(
+        ["alpha", "beta", "gamma", "alpha"], {"alpha", "beta"}, 4
+    ) == pytest.approx(0.75)
+
+
+def test_doc_precision_still_accepts_a_bare_string():
+    # Keeps every existing single-document call site working unchanged.
+    assert doc_precision_at_k(["alpha", "beta"], "alpha", 2) == pytest.approx(0.5)

@@ -1,4 +1,4 @@
-from evaluation.gold import GoldQuestion
+from evaluation.gold import GoldQuestion, GoldSpan
 from evaluation.spans import chunks_overlapping, relevant_chunk_ids
 from rag.chunking import Chunk
 
@@ -51,16 +51,16 @@ def test_an_empty_span_matches_nothing():
 
 def test_relevant_chunk_ids_uses_the_questions_span():
     question = GoldQuestion(
-        id="q1", question="q", doc_id="alpha", quotes=("x",), why="w",
-        spans=((90, 120),),
+        id="q1", question="q", sources=("alpha",), quotes=("x",), why="w",
+        spans=(GoldSpan("alpha", 90, 120),),
     )
     assert relevant_chunk_ids(question, _chunks()) == {"a:0", "a:1"}
 
 
 def test_relevant_chunk_ids_unions_every_span():
     question = GoldQuestion(
-        id="q1", question="q", doc_id="alpha", quotes=("x", "y"), why="w",
-        spans=((10, 20), (200, 210)),
+        id="q1", question="q", sources=("alpha",), quotes=("x", "y"), why="w",
+        spans=(GoldSpan("alpha", 10, 20), GoldSpan("alpha", 200, 210)),
     )
     assert relevant_chunk_ids(question, _chunks()) == {"a:0", "a:2"}
 
@@ -85,3 +85,26 @@ def test_a_synthetic_node_with_the_same_doc_id_is_still_excluded():
     assert chunks_overlapping("alpha", 0, 300, _chunks() + [node]) == {
         "a:0", "a:1", "a:2"
     }
+
+
+def test_relevant_chunks_span_every_gold_document():
+    from evaluation.gold import GoldQuestion, GoldSpan
+
+    question = GoldQuestion(
+        id="q", question="q", sources=("alpha", "beta"),
+        quotes=("a", "b"), why="w", expects="",
+        spans=(GoldSpan("alpha", 0, 50), GoldSpan("beta", 0, 50)),
+    )
+    assert relevant_chunk_ids(question, _chunks()) == {"a:0", "b:0"}
+
+
+def test_a_span_only_matches_chunks_of_its_own_document():
+    # The doc_id travels with the span, so a range that would overlap a
+    # chunk in another paper must not credit it.
+    from evaluation.gold import GoldQuestion, GoldSpan
+
+    question = GoldQuestion(
+        id="q", question="q", sources=("alpha",), quotes=("a",), why="w",
+        expects="", spans=(GoldSpan("alpha", 0, 50),),
+    )
+    assert relevant_chunk_ids(question, _chunks()) == {"a:0"}

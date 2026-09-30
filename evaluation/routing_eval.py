@@ -82,11 +82,18 @@ def score_routing(
     factory to keep every question's trace around; `main` below does not need
     to and lets the default create-and-discard one apply.
 
-    Each gold question must name a document with a `topic` in
+    Each gold question must name documents that all have a `topic` in
     `store.doc_meta` -- every document in this corpus's index has one, so a
     missing topic means the gold set and the index disagree about which
     corpus they describe, and that is worth failing loudly on rather than
     silently scoring as a miss.
+
+    A question may name several documents, and those documents need not
+    share a topic. The router is scored correct when it picks **any** of the
+    question's gold topics: it filters the search to the topics it names, so
+    naming one topic that holds an answer leaves that answer reachable, and
+    demanding every topic would mark a router that found a usable filter as
+    wrong. For a single-source question this is exactly the previous rule.
     """
     topics = _topics_of(store)
     n = len(gold)
@@ -95,13 +102,16 @@ def score_routing(
     topic_counts: list[int] = []
 
     for question in gold:
-        record = store.doc_meta.get(question.doc_id)
-        gold_topic = record.get("topic") if record else None
-        if not gold_topic:
-            raise ValueError(
-                f"gold question {question.id!r} names doc_id "
-                f"{question.doc_id!r}, which has no topic in store.doc_meta"
-            )
+        gold_topics: set[str] = set()
+        for source in question.sources:
+            record = store.doc_meta.get(source)
+            topic = record.get("topic") if record else None
+            if not topic:
+                raise ValueError(
+                    f"gold question {question.id!r} names doc_id "
+                    f"{source!r}, which has no topic in store.doc_meta"
+                )
+            gold_topics.add(topic)
 
         trace = trace_factory(question.question)
         chosen = logical_route(question.question, llm, topics, trace)
@@ -111,7 +121,7 @@ def score_routing(
             hits += 1  # () means "search everything" -- contains it by construction
             topic_counts.append(len(topics))
         else:
-            if gold_topic in chosen:
+            if gold_topics & set(chosen):
                 hits += 1
             topic_counts.append(len(chosen))
 

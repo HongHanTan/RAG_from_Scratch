@@ -212,16 +212,16 @@ def test_counting_llm_counts_a_strategy_that_does_call_the_llm(tiny_corpus: Conf
 
 def test_route_true_is_a_no_op_when_the_corpus_has_no_topics(tiny_corpus: Config):
     from evaluation.benchmark import score_strategy
-    from evaluation.gold import GoldQuestion
+    from evaluation.gold import GoldQuestion, GoldSpan
 
     store = build_index(tiny_corpus, FakeEmbedder())
     assert all(not r.get("topic") for r in store.doc_meta.values())
 
     gold = [
         GoldQuestion(
-            id="g1", question="what is cosine similarity?", doc_id="alpha",
+            id="g1", question="what is cosine similarity?", sources=("alpha",),
             quotes=("Cosine similarity measures the angle",), why="w",
-            spans=((0, 10),),
+            spans=(GoldSpan("alpha", 0, 10),),
         ),
     ]
     llm = FakeLLM("should never be called")
@@ -233,7 +233,7 @@ def test_route_true_is_a_no_op_when_the_corpus_has_no_topics(tiny_corpus: Config
 
 def test_route_true_counts_the_routing_call(tiny_corpus: Config):
     from evaluation.benchmark import score_strategy
-    from evaluation.gold import GoldQuestion
+    from evaluation.gold import GoldQuestion, GoldSpan
 
     store = build_index(tiny_corpus, FakeEmbedder())
     store.doc_meta["alpha"]["topic"] = "vectors"
@@ -241,9 +241,9 @@ def test_route_true_counts_the_routing_call(tiny_corpus: Config):
 
     gold = [
         GoldQuestion(
-            id="g1", question="what is cosine similarity?", doc_id="alpha",
+            id="g1", question="what is cosine similarity?", sources=("alpha",),
             quotes=("Cosine similarity measures the angle",), why="w",
-            spans=((0, 10),),
+            spans=(GoldSpan("alpha", 0, 10),),
         ),
     ]
     llm = FakeLLM('{"topics": ["vectors"]}')
@@ -257,7 +257,7 @@ def test_route_true_counts_the_routing_call(tiny_corpus: Config):
 
 def test_route_true_makes_a_degraded_router_fatal(tiny_corpus: Config):
     from evaluation.benchmark import score_strategy
-    from evaluation.gold import GoldQuestion
+    from evaluation.gold import GoldQuestion, GoldSpan
 
     store = build_index(tiny_corpus, FakeEmbedder())
     store.doc_meta["alpha"]["topic"] = "vectors"
@@ -265,9 +265,9 @@ def test_route_true_makes_a_degraded_router_fatal(tiny_corpus: Config):
 
     gold = [
         GoldQuestion(
-            id="g1", question="what is cosine similarity?", doc_id="alpha",
+            id="g1", question="what is cosine similarity?", sources=("alpha",),
             quotes=("Cosine similarity measures the angle",), why="w",
-            spans=((0, 10),),
+            spans=(GoldSpan("alpha", 0, 10),),
         ),
     ]
     # A reply naming no valid topic makes logical_route abstain and write a
@@ -309,7 +309,7 @@ def _hand_scored_world():
     determined by `merge_best_score`'s documented tie-break (score, then
     chunk_id).
     """
-    from evaluation.gold import GoldQuestion
+    from evaluation.gold import GoldQuestion, GoldSpan
     from rag.chunking import Chunk
     from rag.store import VectorStore
 
@@ -334,12 +334,12 @@ def _hand_scored_world():
 
     gold = [
         GoldQuestion(
-            id="g1", question="q1", doc_id="doc1", quotes=("x",), why="w",
-            spans=((2, 5),),
+            id="g1", question="q1", sources=("doc1",), quotes=("x",), why="w",
+            spans=(GoldSpan("doc1", 2, 5),),
         ),
         GoldQuestion(
-            id="g2", question="q2", doc_id="doc2", quotes=("y",), why="w",
-            spans=((2, 5),),
+            id="g2", question="q2", sources=("doc2",), quotes=("y",), why="w",
+            spans=(GoldSpan("doc2", 2, 5),),
         ),
     ]
     config = Config(top_k=3, retrieval_depth=3)

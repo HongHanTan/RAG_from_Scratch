@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from evaluation.gold import GoldQuestion
+from evaluation.gold import GoldQuestion, GoldSpan
 from evaluation.routing_eval import RoutingScore, format_routing_table, score_routing
 from rag.chunking import Chunk
 from rag.store import VectorStore
@@ -67,20 +67,20 @@ def _world():
 
     gold = [
         GoldQuestion(
-            id="q1", question="question about A", doc_id="docA",
-            quotes=("x",), why="w", spans=((0, 1),),
+            id="q1", question="question about A", sources=("docA",),
+            quotes=("x",), why="w", spans=(GoldSpan("docA", 0, 1),),
         ),
         GoldQuestion(
-            id="q2", question="question about B", doc_id="docB",
-            quotes=("x",), why="w", spans=((0, 1),),
+            id="q2", question="question about B", sources=("docB",),
+            quotes=("x",), why="w", spans=(GoldSpan("docB", 0, 1),),
         ),
         GoldQuestion(
-            id="q3", question="question about C", doc_id="docC",
-            quotes=("x",), why="w", spans=((0, 1),),
+            id="q3", question="question about C", sources=("docC",),
+            quotes=("x",), why="w", spans=(GoldSpan("docC", 0, 1),),
         ),
         GoldQuestion(
-            id="q4", question="second question about A", doc_id="docA",
-            quotes=("x",), why="w", spans=((0, 1),),
+            id="q4", question="second question about A", sources=("docA",),
+            quotes=("x",), why="w", spans=(GoldSpan("docA", 0, 1),),
         ),
     ]
 

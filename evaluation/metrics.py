@@ -57,9 +57,14 @@ def ndcg_at_k(retrieved_ids: list[str], relevant_ids: set[str], k: int) -> float
 
 
 def doc_precision_at_k(
-    retrieved_doc_ids: list[str], gold_doc_id: str, k: int
+    retrieved_doc_ids: list[str], gold_doc_ids: set[str] | str, k: int
 ) -> float:
-    """Fraction of the top k results that come from the document holding the answer.
+    """Fraction of the top k results that come from a document holding the answer.
+
+    A cross-document question has several right documents, so membership is
+    tested against a set. A bare string is still accepted, which keeps every
+    single-document caller working unchanged and makes the original ten
+    questions score exactly as they did before.
 
     Robust to an incomplete chunk-level gold set: it does not matter which
     passage of the right paper was retrieved, only that the paper was found.
@@ -76,8 +81,9 @@ def doc_precision_at_k(
     since DocPrec is always measured at `k=5`), and only changes the number
     if it does not.
     """
+    gold = {gold_doc_ids} if isinstance(gold_doc_ids, str) else set(gold_doc_ids)
     top = retrieved_doc_ids[:k]
     if not top:
         return 0.0
-    hits = sum(1 for doc_id in top if doc_id == gold_doc_id)
+    hits = sum(1 for doc_id in top if doc_id in gold)
     return hits / len(top)

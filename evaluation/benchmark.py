@@ -240,7 +240,9 @@ def score_strategy(
         rrs.append(reciprocal_rank(retrieved_ids, relevant))
         ndcgs.append(ndcg_at_k(retrieved_ids, relevant, k))
         doc_precisions.append(
-            doc_precision_at_k(retrieved_doc_ids, question.doc_id, DOC_PRECISION_K)
+            doc_precision_at_k(
+                retrieved_doc_ids, set(question.sources), DOC_PRECISION_K
+            )
         )
         times.append(trace.total_ms)
         llm_calls.append(calls)

@@ -36,14 +36,19 @@ def chunks_overlapping(
 def relevant_chunk_ids(question: GoldQuestion, chunks: list[Chunk]) -> set[str]:
     """The chunks that count as a correct retrieval for this question.
 
-    A question may have several answering passages, and any of them counts.
-    Requiring one specific passage would score a strategy zero for finding a
-    better explanation of the same thing than the one the gold set happened
-    to quote.
+    A question may have several answering passages, and any of them counts,
+    in any of the question's gold documents. Requiring one specific passage
+    would score a strategy zero for finding a better explanation of the same
+    thing than the one the gold set happened to quote.
+
+    Each span carries its own `doc_id`, so a span is only ever matched
+    against chunks of the paper it came from -- a shared range would
+    otherwise credit a chunk sitting at the same offset in a different
+    paper, silently and in the direction that inflates the score.
     """
     relevant: set[str] = set()
-    for char_start, char_end in question.spans:
+    for span in question.spans:
         relevant |= chunks_overlapping(
-            question.doc_id, char_start, char_end, chunks
+            span.doc_id, span.char_start, span.char_end, chunks
         )
     return relevant
