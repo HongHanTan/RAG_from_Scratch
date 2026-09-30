@@ -601,3 +601,40 @@ code. Task 1 proves the guard scans it rather than assuming.
 **One deviation accepted:** the dashboard serves with `llm=None` when no API key is
 present, mirroring `ask`. Retrieval, timings and the projection need no key, so
 refusing to start would have been worse.
+
+---
+
+# Phase 7 — Full Gold Set and Final Benchmark: Progress
+
+Plan: [docs/superpowers/plans/2026-09-30-phase-7-full-gold-set.md](docs/superpowers/plans/2026-09-30-phase-7-full-gold-set.md)
+
+| # | Task | Status | Commits | Notes |
+|---|------|--------|---------|-------|
+| 1 | A gold question may name several documents | ⬜ | | |
+| 2 | Ten cross-document questions | ⬜ | | |
+| 3 | Ten technique-targeted questions | ⬜ | | |
+| 4 | The final benchmark | ⬜ | | |
+
+**The hazard this phase has to manage.** The spec says to choose the questions
+"with knowledge of what every technique does". That is deliberate — a gold set
+that cannot separate the techniques measures nothing — but it is also how a
+benchmark gets fitted to the answer the author wants, and the author knows RAPTOR
+lost in Phase 5.
+
+Four rules, arranged so that breaking one shows up in the git history:
+
+1. All 20 questions are written and committed **before** anything is measured.
+   Tasks 2 and 3 are forbidden from running the benchmark.
+2. Each new question carries a pre-registered `expects` field naming the
+   technique it is predicted to favour.
+3. No question may be edited or removed after its result is seen — the precedent
+   is Phase 4's refusal to relabel `longcontext-position` after the router missed.
+4. The predictions are scored and reported. If they are mostly wrong, that is the
+   finding.
+
+**Schema change required.** Every existing question names one document, so the
+current set cannot express a cross-document question — which is precisely the
+case RAPTOR exists for, and why its Phase 5 verdict was unfair. Task 1
+generalises the schema, and its safety property is that the original ten must
+score byte-identically afterwards; otherwise the final table is measuring a
+schema change rather than the techniques.
