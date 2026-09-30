@@ -1033,32 +1033,50 @@ The standing caveats apply unchanged: 30 questions, retrieval only (no answer
 quality), and a chunk-level gold set that is necessarily incomplete — which
 is why `DocPrec@5` is reported beside the chunk metrics.
 
-## What could not be measured, and why
+## Filling the two gaps a quota ran out on
 
-Phase 7's final sweep hit Gemini's free-tier **daily** quota
-(`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, 500 requests) partway
-through. The flat 30-question sweep is complete, all six strategies, because
-it ran first and paid for every uncached rewrite the twenty new questions
-needed. What it could not pay for:
+Phase 7's first sweep hit Gemini's free-tier daily cap (500 requests) partway
+through, leaving `decomposition` missing from three tables and `--route`
+unmeasured. It stopped rather than let a strategy silently degrade to plain
+retrieval. Both gaps were filled on a later run, and the completed tables are
+below; nothing was estimated in the meantime.
 
-- **`decomposition` on the raptor, multirep and reranked tables.** Every
-  other strategy builds its rewrite prompt from the question alone, so those
-  prompts were already in the on-disk cache after the flat sweep and the
-  three remaining sweeps cost zero API calls. Decomposition also *answers*
-  each sub-question, and that prompt contains the retrieved context — which
-  differs per index and changes again under reranking. Those are genuinely
-  new calls, and there was no quota left for them. Its row is missing rather
-  than estimated.
-- **The `--route` table on 30 questions.** Routing issues one structured call
-  per question; twenty of the thirty were uncached.
+**RAPTOR, 30 questions, all six strategies.** `decomposition` 0.240 recall,
+below `direct`'s 0.277 — the same ordering the flat table shows.
 
-Nothing was allowed to degrade to fill the gap. `check_not_degraded` treats
-a strategy that silently fell back to plain retrieval as fatal, the raptor
-sweep raised it on decomposition's first uncached sub-question, and the run
-stopped there rather than reporting plain retrieval as decomposition. Five
-rows measured honestly are worth more than six with one of them quietly
-wrong — that is the same judgement the `degraded` sentinel exists to enforce,
-applied to the benchmark's own results.
+**Reranked flat, all six.** `decomposition` 0.370/0.299/0.237/0.553, which
+moves it from last on the flat table to last-but-unchanged here; reranking
+lifts it +0.092 like everything else.
+
+**Multi-representation, all six.** `decomposition` 0.000 recall and DocPrec@5
+0.220, indistinguishable from the other five, as the metric mismatch below
+predicts.
+
+## Routing, remeasured: the Phase 4 verdict reverses
+
+Phase 4 measured logical routing on ten questions and reported that it hurts:
+mean Recall@20 across the six strategies fell 0.394 to 0.378. On thirty
+questions it helps, by about as much as it previously hurt:
+
+| | mean Recall@20 |
+|---|---:|
+| flat, no routing | 0.345 |
+| flat, `--route` | **0.359** |
+
+Per strategy, with routing: hyde 0.512 → 0.522, rag-fusion 0.376 → 0.382,
+multi-query 0.314 → 0.362, step-back 0.300 → 0.329, direct 0.293 → 0.293,
+decomposition 0.278 → 0.266. Five of six improve or hold; only decomposition
+falls.
+
+The honest reading is not "routing works after all". It is that **a ±0.016
+effect was never measurable on ten questions**, and Phase 4's confident
+negative was noise given a mechanism. The mechanism offered there — that on
+5,116 chunks plain top-k already finds most answers, so a 90%-accurate router
+costs more than it saves — was a plausible story fitted to a difference of
+one or two questions. Twenty more questions moved it the other way.
+
+This is the fifth Phase 2-6 conclusion that thirty questions overturned, and
+the one that should most change how the rest of this README is read.
 
 ## The retrieval inspector
 
@@ -1145,7 +1163,8 @@ questions are answered by no strategy at all and are left in place unedited.
 
 **Two tables are incomplete.** `decomposition` is missing from the raptor,
 multirep and reranked tables, and the `--route` table is still the
-10-question one. See "What could not be measured, and why" above.
+10-question one. Both of that sweep's gaps have since been filled; see
+"Filling the two gaps a quota ran out on" above.
 
 ## Configuration
 

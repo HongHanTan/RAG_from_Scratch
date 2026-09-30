@@ -682,7 +682,21 @@ retrieves them. Left unedited by rule.
 beat 5,116 on DocHit@1 (0.467 vs 0.433), DocHit@5 (0.900 vs 0.800) and DocMRR
 (0.631 vs 0.594).
 
-### Two gaps, quota-limited
+### Two gaps — now filled
+
+Filled on a later run with a fresh key. All four tables now carry all six
+strategies, and `--route` was measured on 30 questions.
+
+**A fifth Phase 2-6 conclusion overturned: routing.** Phase 4 reported that
+logical routing hurts (mean Recall@20 0.394 -> 0.378 on ten questions). On
+thirty it helps: 0.345 -> 0.359. Five of six strategies improve or hold.
+
+The reading is not "routing works after all" but that a +-0.016 effect was
+never measurable on ten questions. Phase 4's mechanism — that plain top-k
+already finds most answers, so a 90%-accurate router costs more than it saves
+— was a plausible story fitted to a one-or-two-question difference.
+
+### The original gap description, kept for the record
 
 The free tier's 500/day cap ran out mid-sweep. The agent stopped rather than let a
 strategy degrade, which is correct. Outstanding:
