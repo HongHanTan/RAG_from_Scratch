@@ -318,6 +318,111 @@
       ],
       "why": "Two unsupervised signals for the same missing label, one per paper. Phrased without either paper's terms ('Inverse Cloze Task', 'masked language modeling'), so the question shares little vocabulary with the passages that answer it.",
       "expects": "hyde"
+    },
+    {
+      "id": "pairwise-comparison-blowup",
+      "question": "Picking out the two most alike items from a pile of ten thousand short texts is hopeless if every possible pairing has to be pushed through one joint network. What architectural change made the job tractable, and what did the wait shrink to?",
+      "doc_id": "sbert",
+      "quotes": [
+        "This reduces the effort for finding the most similar pair from 65 hours with BERT / RoBERTa to about 5 seconds with SBERT, while maintaining the accuracy from BERT."
+      ],
+      "why": "Phrased for HyDE: the question names neither 'siamese', 'triplet', 'cross-encoder' nor any of the passage's numbers, so it shares little vocabulary with the sentence that answers it. A hypothetical answer would name them all.",
+      "expects": "hyde"
+    },
+    {
+      "id": "reasoning-without-checking",
+      "question": "A model that works everything out privately in its own head, never consulting anything outside itself, tends to make things up and then build later steps on the invention. What is that failure usually attributed to?",
+      "doc_id": "react",
+      "quotes": [
+        "reasoning is a static black box, in that the model uses its own internal representations to generate thoughts and is not grounded in the external world,",
+        "This can lead to issues like fact hallucination and error propagation over the reasoning process"
+      ],
+      "why": "Phrased for HyDE: 'works everything out privately' for 'static black box', 'make things up' for 'hallucination'. Almost no content word is shared with the answering passage.",
+      "expects": "hyde"
+    },
+    {
+      "id": "when-counting-words-wins",
+      "question": "Does a trained neural representation always beat plain old-fashioned statistical keyword scoring at finding the right passage, or are there settings where the older method still comes out ahead?",
+      "doc_id": "multi_vector",
+      "quotes": [
+        "can outperform a dual encoder based on BERT, particularly on longer documents and on a task that requires precise detection of word overlap."
+      ],
+      "why": "Phrased for HyDE: the question names neither BM25 nor dual encoders, but any hypothetical answer would name both, which is exactly what should pull the embedding towards this passage.",
+      "expects": "hyde"
+    },
+    {
+      "id": "devlin-masking-rate",
+      "question": "In the 2018 paper by Devlin et al., what proportion of WordPiece tokens is masked during pre-training, and how is a chosen token position actually substituted?",
+      "doc_id": "bert",
+      "quotes": [
+        "In all of our experiments, we mask 15% of all WordPiece tokens in each sequence at random.",
+        "The training data generator chooses 15% of the token positions at random for prediction."
+      ],
+      "why": "Author constraint 'Devlin et al.' and a date, both recorded in data/metadata.json for this document alone, so --construct can turn them into a real metadata filter. The body vocabulary matches closely, so the filter is the only thing being tested.",
+      "expects": "direct"
+    },
+    {
+      "id": "zhou-scan-accuracy",
+      "question": "In the least-to-most prompting paper by Zhou et al., what accuracy does code-davinci-002 reach on the SCAN benchmark, how many exemplars does that take, and what does chain-of-thought prompting manage instead?",
+      "doc_id": "least_to_most",
+      "quotes": [
+        "it can solve the compositional generalization benchmark SCAN in any split (including length split) with an accuracy of at least 99% using just 14 exemplars, compared to only 16% accuracy with chain-of-thought prompting"
+      ],
+      "why": "Author constraint 'Zhou et al.', which metadata records for this document only. The named entities in the question also appear in the passage, so a failure here is a failure of the filter or of the ranking, not of vocabulary.",
+      "expects": "direct"
+    },
+    {
+      "id": "pre-2018-architecture",
+      "question": "Among the papers in this collection published before 2018, one throws out recurrence altogether. What does it lean on instead, and how quickly could the smaller version be trained?",
+      "doc_id": "attention",
+      "quotes": [
+        "based solely on attention mechanisms, dispensing with recurrence and convolutions entirely.",
+        "can reach a new state of the art in translation quality after being trained for as little as twelve hours on eight P100 GPUs."
+      ],
+      "why": "Date constraint: 2017-06-12 makes this the only document in data/metadata.json published before 2018, so 'published_before: 2018-01-01' isolates it exactly. The date clause is also dead weight in the embedding, which is why HyDE is predicted here and plain retrieval is not.",
+      "expects": "hyde"
+    },
+    {
+      "id": "t5-corpus-and-task-prefix",
+      "question": "How much text was assembled for T5's pre-training corpus, and how is the model told which task to perform on a given input?",
+      "doc_id": "t5",
+      "quotes": [
+        "This produces a collection of text that is not only orders of magnitude larger than most data sets used for pre-training (about 750 GB)",
+        "To specify which task the model should perform, we add a task-specific (text) prefix to the original input sequence before feeding it to the model."
+      ],
+      "why": "Multi-hop inside one paper: the corpus size is in section 2.2 and the task prefix in section 2.4, and no single passage states both. This is the case decomposition exists for.",
+      "expects": "decomposition"
+    },
+    {
+      "id": "naive-then-advanced-rag",
+      "question": "What two-word framework name does the RAG survey give its earliest paradigm, and which indexing refinements does the following paradigm introduce to repair that paradigm's shortcomings?",
+      "doc_id": "rag_survey",
+      "quotes": [
+        "The Naive RAG follows a traditional process that includes indexing, retrieval, and generation, which is also characterized as a “Retrieve-Read” framework",
+        "Advanced RAG refines its indexing techniques through the use of a sliding window approach, fine-grained segmentation, and the incorporation of metadata."
+      ],
+      "why": "Multi-hop inside one paper: the two paradigms are described in separate subsections and the question needs one fact from each.",
+      "expects": "decomposition"
+    },
+    {
+      "id": "chain-of-thought-definition",
+      "question": "What is chain-of-thought prompting, and how are the chain of thought demonstrations provided to the model?",
+      "doc_id": "cot",
+      "quotes": [
+        "a simple method called chain-of-thought prompting, where a few chain of thought demonstrations are provided as exemplars in prompting."
+      ],
+      "why": "Baseline: direct vocabulary match with the abstract. A gold set with no easy questions cannot show a technique making things worse, which is half of what the benchmark is for.",
+      "expects": "direct"
+    },
+    {
+      "id": "dual-encoder-scaling",
+      "question": "What happens to out-of-domain generalization when the size of a dual encoder model is scaled up while the bottleneck embedding size is kept fixed?",
+      "doc_id": "gtr",
+      "quotes": [
+        "scaling up the size of the dual encoder model while keeping the bottleneck embedding size fixed. With multi-stage training, surprisingly, scaling up the model size brings significant improvement on a variety of retrieval tasks, especially for out-of-domain generalization."
+      ],
+      "why": "Baseline: the question reuses the abstract's own wording almost term for term, so any rewriting strategy can only move it away from the passage.",
+      "expects": "direct"
     }
   ]
 }
