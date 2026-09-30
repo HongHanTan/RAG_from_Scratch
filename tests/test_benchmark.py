@@ -459,3 +459,51 @@ def test_rerank_defaults_off():
     from evaluation.benchmark import build_parser
 
     assert build_parser().parse_args([]).rerank is False
+
+
+# --- the --predictions flag ---------------------------------------------------
+
+def test_benchmark_accepts_predictions():
+    from evaluation.benchmark import build_parser
+
+    assert build_parser().parse_args(["--predictions"]).predictions is True
+
+
+def test_predictions_defaults_off():
+    from evaluation.benchmark import build_parser
+
+    assert build_parser().parse_args([]).predictions is False
+
+
+def test_prediction_scoring_counts_a_hit():
+    from evaluation.benchmark import score_predictions
+
+    # question -> {strategy: recall}; the prediction is "hyde"
+    per_question = {"q1": {"hyde": 0.9, "direct": 0.1}}
+    expects = {"q1": "hyde"}
+    hits, total = score_predictions(per_question, expects)
+    assert (hits, total) == (1, 1)
+
+
+def test_prediction_scoring_counts_a_miss():
+    from evaluation.benchmark import score_predictions
+
+    per_question = {"q1": {"hyde": 0.1, "direct": 0.9}}
+    hits, total = score_predictions(per_question, {"q1": "hyde"})
+    assert (hits, total) == (0, 1)
+
+
+def test_questions_without_a_prediction_are_not_counted():
+    from evaluation.benchmark import score_predictions
+
+    per_question = {"q1": {"hyde": 0.9}}
+    assert score_predictions(per_question, {"q1": ""}) == (0, 0)
+
+
+def test_a_tie_does_not_count_as_a_hit():
+    # If every strategy scores the same the prediction told us nothing, and
+    # counting it as correct would inflate the scorecard.
+    from evaluation.benchmark import score_predictions
+
+    per_question = {"q1": {"hyde": 0.5, "direct": 0.5}}
+    assert score_predictions(per_question, {"q1": "hyde"}) == (0, 1)

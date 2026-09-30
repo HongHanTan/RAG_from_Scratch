@@ -6,9 +6,8 @@ text splitter, the embedding pooling, the similarity math and the prompt
 assembly are all written out. `tests/test_no_frameworks.py` enforces this by
 failing the suite if any of them is ever imported.
 
-Phase 1 (core indexing, retrieval and generation) and Phase 2 (query
-translation) are complete. See the roadmap below for what comes next, and the
-design spec for the full plan:
+All seven phases are complete, through the 30-question final benchmark
+below. See the roadmap at the end, and the design spec for the full plan:
 [`docs/superpowers/specs/2026-09-27-rag-from-scratch-design.md`](docs/superpowers/specs/2026-09-27-rag-from-scratch-design.md).
 
 ## Quick start
@@ -202,19 +201,153 @@ wearing a lab coat.
 
 ## Benchmark
 
-Phase 3 measures retrieval — not answer quality — against a 10-question gold
-set (`evaluation/gold.json`), using `python -m evaluation.benchmark`:
+Retrieval — not answer quality — measured against the **30-question** gold set
+(`evaluation/gold.json`), using `python -m evaluation.benchmark`. Phase 7 grew
+the set from 10 questions to 30. Ten of the new ones are **cross-document**:
+their answer needs passages from two or three papers, which the old gold
+schema could not even express. All twenty were written, given a
+**pre-registered prediction** of which strategy should win them, and
+committed *before* anything was measured — the commit order is the evidence,
+and no question was edited after its result was seen.
 
 | Strategy | Recall@20 | MRR@20 | nDCG@20 | DocPrec@5 | LLM calls | Mean ms (warm) | Questions |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| hyde | 0.558 | 0.358 | 0.315 | 0.660 | 1.0 | 145 | 10 |
-| rag-fusion | 0.392 | 0.140 | 0.184 | 0.560 | 1.0 | 66 | 10 |
-| step-back | 0.383 | 0.136 | 0.170 | 0.400 | 1.0 | 43 | 10 |
-| multi-query | 0.375 | 0.190 | 0.208 | 0.400 | 1.0 | 66 | 10 |
-| decomposition | 0.333 | 0.194 | 0.187 | 0.600 | 3.4 | 81 | 10 |
-| direct | 0.325 | 0.103 | 0.137 | 0.560 | 0.0 | 28 | 10 |
+| hyde | 0.512 | 0.335 | 0.310 | 0.533 | 1.0 | 123 | 30 |
+| rag-fusion | 0.376 | 0.167 | 0.193 | 0.480 | 1.0 | 91 | 30 |
+| multi-query | 0.314 | 0.202 | 0.199 | 0.460 | 1.0 | 90 | 30 |
+| step-back | 0.300 | 0.166 | 0.162 | 0.393 | 1.0 | 53 | 30 |
+| direct | 0.293 | 0.174 | 0.166 | 0.440 | 0.0 | 27 | 30 |
+| decomposition | 0.278 | 0.154 | 0.153 | 0.480 | 3.2 | 62 | 30 |
 
-**Phase 4 moved one row, and the sample cannot say which way.** Converting
+### What 20 more questions did to the Phase 2-6 conclusions
+
+This is the most useful thing in this section: it says how far the
+10-question benchmark every earlier phase rested on could actually be
+trusted. Same index, same code, same metrics — only the gold set changed.
+
+| Strategy | R@20 (10q) | R@20 (30q) | MRR (10q) | MRR (30q) | DocPrec@5 (10q) | DocPrec@5 (30q) |
+|---|---:|---:|---:|---:|---:|---:|
+| hyde | 0.558 | 0.512 | 0.358 | 0.335 | 0.660 | 0.533 |
+| rag-fusion | 0.392 | 0.376 | 0.140 | 0.167 | 0.560 | 0.480 |
+| multi-query | 0.375 | 0.314 | 0.190 | 0.202 | 0.400 | 0.460 |
+| step-back | 0.383 | 0.300 | 0.136 | 0.166 | 0.400 | 0.393 |
+| direct | 0.325 | 0.293 | 0.103 | 0.174 | 0.560 | 0.440 |
+| decomposition | 0.333 | 0.278 | 0.194 | 0.154 | 0.600 | 0.480 |
+
+**Everything got harder.** Mean `Recall@20` over the six strategies falls
+0.394 to 0.346 and mean `DocPrec@5` 0.530 to 0.464. That is expected: the 20
+new questions were written to separate the techniques, a third of them need
+passages from several papers, and three of them no strategy answers at all
+(below). Mean `MRR@20` actually rises slightly, 0.187 to 0.200.
+
+**What still holds.** HyDE leads every column, by a margin nothing else comes
+near: +0.219 `Recall@20` over `direct` on 30 questions against +0.233 on 10.
+That was the only difference the 10-question table said was likely to survive
+a larger set, and it did.
+
+**Four Phase 2-6 claims that no longer hold:**
+
+1. *"multi-query's `DocPrec@5` (0.400) is worse than direct's (0.560)"* —
+   **reversed.** On 30 questions multi-query is 0.460 against direct's 0.440.
+   The crowding effect that paragraph explained was a 10-question artifact.
+2. *"Step-back sits in between: better recall than direct"* — **gone.**
+   0.300 against 0.293 is a tie, not an ordering; on 10 questions the gap was
+   +0.058.
+3. *"decomposition spends a mean of 3.4 model calls per question ... for a
+   Recall@20 gain of only 0.008 over direct"* — **the sign flipped.**
+   Decomposition is now *last of six* and 0.015 *below* plain retrieval, at
+   3.2 calls a question. The cost case against it is stronger than Phase 3
+   could state.
+4. *Direct retrieval ranks worst.* On 10 questions `direct` had the lowest
+   `MRR@20` of all six (0.103). On 30 it is **third** (0.174), ahead of
+   rag-fusion, step-back and decomposition. Only HyDE and multi-query now
+   rank better than doing nothing. Read with (1) and (2): outside HyDE, query
+   translation on this corpus is closer to a wash than the 10-question table
+   suggested, not further from it.
+
+The rank order of the middle four reshuffled completely (10q: rag-fusion,
+step-back, multi-query, decomposition, direct — 30q: rag-fusion, multi-query,
+step-back, direct, decomposition), which is exactly what "treat rank order
+among the four middling strategies as unreliable" predicted. The warning was
+right; the numbers it warned about were not.
+
+### The prediction scorecard: 6 of 20
+
+`python -m evaluation.benchmark --predictions` scores the `expects` field
+every new question carries — the strategy its author predicted would win it,
+written down before any of it was run. A question where every strategy ties
+counts as a miss, because the prediction distinguished nothing there.
+
+```
+predictions correct: 6/20 (30.0%)
+```
+
+| Question | Predicted | Actual winner | Hit |
+|---|---|---|---|
+| chain-of-thought-definition | direct | tie (all 1.000) | no |
+| devlin-masking-rate | direct | hyde, multi-query, rag-fusion | no |
+| dual-encoder-scaling | direct | tie (all 1.000) | no |
+| frozen-versus-trained-lm | decomposition | hyde | no |
+| llm-instead-of-annotators | hyde | five-way tie including hyde | **yes** |
+| long-context-cost | hyde | hyde, step-back | **yes** |
+| multihop-one-step-retrieval | decomposition | hyde | no |
+| naive-then-advanced-rag | decomposition | hyde | no |
+| one-model-many-tasks | rag-fusion | rag-fusion | **yes** |
+| pairwise-comparison-blowup | hyde | tie (all 0.000) | no |
+| pre-2018-architecture | hyde | hyde, step-back | **yes** |
+| query-transformation-family | multi-query | multi-query, rag-fusion | **yes** |
+| reader-passage-fusion | multi-query | hyde | no |
+| reasoning-without-checking | hyde | tie (all 0.000) | no |
+| retriever-without-labels | hyde | decomposition | no |
+| sparse-dense-mismatch | decomposition | four-way tie including decomposition | **yes** |
+| t5-corpus-and-task-prefix | decomposition | hyde | no |
+| when-counting-words-wins | hyde | tie (all 0.000) | no |
+| zeroshot-generalisation-gap | rag-fusion | multi-query | no |
+| zhou-scan-accuracy | direct | hyde, multi-query, rag-fusion | no |
+
+**30% is a bad score, and reporting it is the point.** The gold set was
+written by the person who built the system, with knowledge of what every
+technique does — which is what lets it separate them and also exactly what
+would let it be fitted to a flattering answer. The pre-registration makes
+that risk measurable instead of hidden, and the measurement says the author's
+model of these techniques is wrong most of the time. Five of the twenty ended
+in an all-strategy tie and are counted as misses; of the fifteen questions
+that had a winner at all, the prediction named it six times.
+
+Read by predicted technique it is worse than the headline:
+
+| Predicted | Hits | Predicted on |
+|---|---:|---:|
+| hyde | 3 | 7 |
+| decomposition | 1 | 5 |
+| direct | **0** | 4 |
+| rag-fusion | 1 | 2 |
+| multi-query | 1 | 2 |
+
+**Every `direct` prediction failed.** Those four were the deliberately easy
+vocabulary-match questions, written as baseline cases plain retrieval ought
+to win. Two ended in a six-way tie at 1.000 — everything found the chunk, so
+"direct wins" was unfalsifiable as posed — and on the other two `direct`
+scored 0.500 while hyde, multi-query and rag-fusion scored 1.000. Plain
+retrieval never *uniquely* won a question it was predicted to win.
+
+Meanwhile HyDE won or co-won **11 of the 15 questions that had a winner at
+all**, including five written to favour decomposition or direct. The
+technique the author predicted least confidently is the one that keeps
+happening.
+
+**Three questions score 0.000 for every strategy**
+(`pairwise-comparison-blowup`, `reasoning-without-checking`,
+`when-counting-words-wins`) — all three written to reward HyDE by sharing
+little vocabulary with the passage that answers them. They apparently share
+too little: nothing retrieves their gold chunk in the top 20. They are left
+in the set unedited. Rewriting a question after seeing it score zero is the
+precise thing the pre-registration exists to prevent, and since they drag
+every strategy down equally the comparison between strategies is unaffected.
+
+**Phase 4 moved one row, and the sample cannot say which way.** (Every
+number in this note is from the 10-question set it was measured on;
+Phase 7's 30-question replacements are above.) Converting
 `step-back` to structured output changes the exact text the model returns for
 its general question, which changes what gets retrieved. `Recall@20` reads
 0.383 where the free-form version read 0.475, `MRR@20` 0.136 against 0.196,
@@ -265,7 +398,7 @@ on-disk LLM cache these repeat runs share) is gitignored — it is not part of
 this repository. A clean clone has no cache to warm: it re-samples the model
 for every rewrite, hypothetical document, and sub-question, and gets
 different text back each time. This table is one draw of those LLM outputs
-over a 10-question gold set, with no variance estimate across draws. "Ran
+over a 30-question gold set, with no variance estimate across draws. "Ran
 repeatedly" above means repeated against *this machine's* warm cache, which
 shows the columns are order-independent and re-run-stable — it does not mean
 a second person cloning this repository and running the benchmark cold would
@@ -327,35 +460,42 @@ as a claim that holds at every `--k`.
 
 **What this actually shows:** only HyDE clearly beats plain retrieval, and it
 does so on every column — recall, ranking, and document precision alike. The
-other four translation strategies are a mixed bag rather than a clean win.
-RAG-Fusion and multi-query find more relevant chunks somewhere in the top 20
-than direct retrieval does (higher Recall@20), but multi-query's `DocPrec@5`
-(0.400) is *worse* than direct's (0.560): unioning five rewritten queries can
-crowd the top 5 with chunks from the wrong paper even while surfacing more
-correct chunks further down the list. Step-back sits in between: better
-recall than direct, but a lower `DocPrec@5` too. On this corpus, with this
-gold set, query translation is not a uniform win — most of it is a wash or a
-regression once ranking and document precision are counted, not just "was
-the chunk somewhere in the top 20."
+other four translation strategies are not a clean win over doing nothing.
+RAG-Fusion, multi-query and step-back each find slightly more relevant chunks
+somewhere in the top 20 than direct retrieval does (0.376, 0.314 and 0.300
+against 0.293), but only multi-query also ranks them better (`MRR@20` 0.202
+against direct's 0.174), and only multi-query and rag-fusion also improve
+`DocPrec@5`. Decomposition is worse than direct on every column. On this
+corpus, with this gold set, query translation is one technique that works and
+four that are a wash or a regression once ranking and document precision are
+counted, not just "was the chunk somewhere in the top 20."
 
-Decomposition's cost case now rests on `LLM calls`, not milliseconds: with
-the cache warm it costs 110ms per question, only ~2.6x direct's 42ms — a
-world away from the roughly 2000x this table previously reported, because
-that old figure was really measuring a cold LLM round trip, not orchestration
-cost. The number that still holds up is `LLM calls`: decomposition spends a
-mean of 3.4 model calls per question (one to split the question, plus one per
-sub-question it answers) against 1 for every other translation strategy and
-0 for direct, for a Recall@20 gain of only 0.008 over direct. That is a real,
-order-independent cost — several extra round trips to the model, each with
-its own latency and price in production even when nothing is cached — for a
-gain within the noise of a 10-question sample.
+Decomposition's cost case rests on `LLM calls`, not milliseconds: with the
+cache warm it costs 62ms per question, only ~2.3x direct's 27ms — a world
+away from the roughly 2000x an earlier version of this table reported,
+because that old figure was really measuring a cold LLM round trip, not
+orchestration cost. The number that holds up is `LLM calls`: decomposition
+spends a mean of 3.2 model calls per question (one to split the question,
+plus one per sub-question it answers) against 1 for every other translation
+strategy and 0 for direct — and on 30 questions it buys a `Recall@20`
+*0.015 below* direct's, last of the six. On 10 questions this paragraph could
+only say the 0.008 gain was within noise; on 30 the gain is gone. Several
+extra round trips to the model, each with its own latency and price in
+production even when nothing is cached, for retrieval no better than not
+making them.
 
 **Read this table narrowly:**
 
-- **10 questions.** Differences of a few points are noise at this sample
-  size; treat rank order among the four middling strategies as unreliable and
-  the hyde-vs-everything-else gap as the only difference likely to survive a
-  larger set.
+- **30 questions.** Three times the old set and still small. Each question is
+  worth up to 0.033 of `Recall@20`, so differences of a few points remain
+  noise; the reshuffle described above is what that looks like in practice.
+  Treat the hyde-vs-everything-else gap as the one difference that has now
+  survived a tripling of the sample, and the ordering of the other five as
+  provisional.
+- **One author.** The questions, the quotes *and* the `expects` predictions
+  are all one person's, written with knowledge of how the corpus, the chunker
+  and the six strategies behave. Pre-registering the predictions makes the
+  resulting bias measurable — it does not remove it.
 - **Retrieval only.** Nothing here measures whether the retrieved chunks
   produce a better final answer — that is not evaluated anywhere yet.
 - **The chunk-level gold set is incomplete.** It names some answering
@@ -365,9 +505,6 @@ gain within the noise of a 10-question sample.
   the relative comparison holds, but none of those three numbers is an
   absolute quality score. `DocPrec@5` does not have this problem, which is
   why it is reported alongside them.
-- **The gold set was written by the person who built the system**, which is
-  a real bias: the questions and quotes were chosen with knowledge of how the
-  corpus and chunker behave.
 
 ## Routing and query construction
 
@@ -465,14 +602,14 @@ retrieval.
 This section used to argue that scoring `--route` against the gold set
 "would answer a different question" than the strategy table above and leave
 it at that. That argument doesn't survive contact with the gold set itself:
-every one of its 10 questions already names a `doc_id`, and every document
+every one of its questions already names a `doc_id`, and every document
 already carries a `topic` in `store.doc_meta` — so routing accuracy is
 computable with zero new labelling. Did `logical_route` return a topic set
 containing the topic of the document that actually holds the answer?
 `evaluation/routing_eval.py` answers that directly, with no new gold data:
 
 ```
-$ python -m evaluation.routing_eval
+$ python -m evaluation.routing_eval   # 10-question gold set, Phase 4
 | Recall | Abstention rate | Mean topics chosen | Topics available | Questions |
 |---:|---:|---:|---:|---:|
 | 0.900 | 0.000 | 1.30 | 5 | 10 |
@@ -516,6 +653,15 @@ improved; this gold set is too small to say why. This is a measured negative
 result, reported the same way the four under-performing Phase 2 strategies
 already are above — an honest "doesn't help here" is worth more than an
 unmeasured "would help".
+
+**This table is still the 10-question one, and that is a gap.** Phase 7
+re-ran every other variant on 30 questions but could not re-run `--route`:
+routing issues one `.structured()` call per question with a prompt that
+depends only on the question, so the 20 new questions are 20 uncached API
+calls, and the free tier's 500-requests-per-day quota was already spent on
+the strategy sweeps (see below). The routed numbers above therefore describe
+the old gold set only, and given how much the unrouted table moved between 10
+and 30 questions they should not be assumed to carry over.
 
 ### `--construct` and `--semantic-prompt` are still not in the benchmark table
 
@@ -565,23 +711,46 @@ a defeat:
   character span overlaps an answering passage. A summary node is generated
   text with no position in any document, so it can never satisfy a span. The
   metric cannot see this technique at all.
-- **DocPrec@5 is capped at 0.200.** The index holds exactly one node per
-  document, so at most one of any top 5 can be the gold document. Flat can
-  reach 1.0. The measured 0.140-0.200 is the ceiling, not a score.
+- **DocPrec@5 is capped at 0.273.** The index holds exactly one node per
+  document, so a question can contribute at most one slot per gold document
+  it names — one for the twenty single-document questions, two or three for
+  the cross-document ones, giving a ceiling of 41/150. Flat can reach 1.0.
+  The measured 0.180-0.220 is close to that ceiling, not a score.
+
+On the 30-question set (`python -m evaluation.benchmark --index multirep`,
+five strategies — see the quota note below):
+
+| Strategy | Recall@20 | MRR@20 | nDCG@20 | DocPrec@5 | LLM calls | Mean ms (warm) | Questions |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| hyde | 0.000 | 0.000 | 0.000 | 0.220 | 1.0 | 188 | 30 |
+| direct | 0.000 | 0.000 | 0.000 | 0.213 | 0.0 | 44 | 30 |
+| step-back | 0.000 | 0.000 | 0.000 | 0.200 | 1.0 | 65 | 30 |
+| rag-fusion | 0.000 | 0.000 | 0.000 | 0.193 | 1.0 | 129 | 30 |
+| multi-query | 0.000 | 0.000 | 0.000 | 0.180 | 1.0 | 131 | 30 |
 
 The honest comparison is at the document level — did retrieval surface the
-right paper, and how high?
+right paper, and how high? A cross-document question counts as a hit when
+*any* of its gold documents is found, at the best rank any of them reached.
+Re-measured on all 30 questions:
 
 | index | nodes | DocHit@1 | DocHit@5 | DocMRR |
 |---|---:|---:|---:|---:|
-| flat | 5,116 | 0.600 | 1.000 | 0.775 |
-| **multirep** | **38** | **0.700** | 1.000 | **0.808** |
-| raptor | 5,846 | 0.600 | 1.000 | 0.775 |
+| flat | 5,116 | 0.433 | 0.800 | 0.594 |
+| **multirep** | **38** | **0.467** | **0.900** | **0.631** |
+| raptor | 5,846 | 0.433 | 0.800 | 0.591 |
 
 **An index 135x smaller finds the right document more often than flat
-chunking**, and ranks it higher. That is the real result of this phase. A
+chunking**, and ranks it higher. That result survives the larger gold set:
+multirep still leads all three columns, and its `DocHit@5` lead is now
+visible where on 10 questions all three indexes were pinned at 1.000. A
 document summary is a better search key than any one of its paragraphs,
 because it describes the whole document rather than one corner of it.
+
+What did *not* survive is the absolute level. On 10 questions every index
+found the right paper inside the top 5 every time (`DocHit@5` 1.000 across
+the board) and flat's `DocHit@1` was 0.600; on 30 it is 0.800 and 0.433.
+**The claim "`DocHit@5` = 1.000" no longer holds for any index** — it was a
+property of ten easy questions, not of the corpus.
 
 The cost is precision within a document: multirep returns 44,000 characters
 where flat returns 800, so it tells you *which paper* and leaves finding the
@@ -601,16 +770,20 @@ levels: {0: 5116, 1: 640, 2: 80, 3: 10}   # 730 summaries, 730 LLM calls
 All levels live in one store, so a single search spans raw passages and
 abstractions together.
 
-**On the span-based gold set, RAPTOR loses across the board:**
+**On the 30-question span-based gold set, RAPTOR loses across the board**
+(five strategies — see the quota note below):
 
 | Strategy | Recall@20 flat | raptor | MRR@20 flat | raptor | DocPrec@5 flat | raptor |
 |---|---:|---:|---:|---:|---:|---:|
-| hyde | 0.558 | 0.425 | 0.358 | 0.260 | 0.660 | 0.500 |
-| rag-fusion | 0.392 | 0.392 | 0.140 | 0.134 | 0.560 | 0.480 |
-| direct | 0.325 | 0.325 | 0.103 | 0.085 | 0.560 | 0.460 |
-| decomposition | 0.333 | 0.283 | 0.194 | 0.114 | 0.600 | 0.440 |
-| multi-query | 0.375 | 0.283 | 0.190 | 0.151 | 0.400 | 0.220 |
-| step-back | 0.383 | 0.175 | 0.136 | 0.058 | 0.400 | 0.140 |
+| hyde | 0.512 | 0.408 | 0.335 | 0.245 | 0.533 | 0.407 |
+| rag-fusion | 0.376 | 0.343 | 0.167 | 0.154 | 0.480 | 0.373 |
+| multi-query | 0.314 | 0.279 | 0.202 | 0.146 | 0.460 | 0.287 |
+| step-back | 0.300 | 0.174 | 0.166 | 0.095 | 0.393 | 0.187 |
+| direct | 0.293 | 0.277 | 0.174 | 0.153 | 0.440 | 0.373 |
+
+Not one cell improves. The pattern is the Phase 5 one at a smaller
+magnitude: `step-back` is hit hardest again (0.300 to 0.174), `direct` least
+(0.293 to 0.277).
 
 The mechanism is not mysterious. Summary nodes occupy top-k slots and can
 never be credited, so every slot one takes is a slot a creditable chunk did
@@ -631,11 +804,46 @@ central theme focused on evaluating, refining, and supplementing
 retrieval-augmented generation systems"*, which is an answer to a question no
 single 200-token chunk can answer.
 
-So the fair reading is not "RAPTOR is worse". It is **RAPTOR is built for a
-question this gold set does not contain.** Ten hand-written questions each
-have one answering passage in one paper; that is the case flat top-k already
-wins. Phase 7 expands the gold set to 30, and the right test for RAPTOR is
-whether those include questions whose answer lives across documents.
+#### Phase 5's excuse, tested — and it does not hold
+
+Phase 5 closed this section by saying the fair reading was not "RAPTOR is
+worse" but **"RAPTOR is built for a question this gold set does not
+contain"**: ten hand-written questions each with one answering passage in one
+paper, which is the case flat top-k already wins. Phase 7 wrote the missing
+question type — ten cross-document questions whose answer needs passages from
+two or three papers — and the right test is to compare the indexes **on that
+subset alone**, using `direct` so no query rewriting confounds it:
+
+| subset | n | flat Recall@20 | raptor Recall@20 | delta |
+|---|---:|---:|---:|---:|
+| cross-document | 10 | 0.197 | 0.146 | **-0.051** |
+| single-document | 20 | 0.342 | 0.342 | +0.000 |
+
+**RAPTOR loses on its own home ground, and only there.** On the twenty
+single-document questions the two indexes are exactly tied — the summary
+nodes cost nothing because they rarely displace anything that would have been
+credited. On the ten cross-document questions, the case the technique was
+designed for and the case Phase 5 said the gold set was missing, RAPTOR is
+0.051 *worse*.
+
+**This is a stronger negative result than Phase 5's**, and it should be read
+as one. Phase 5 measured RAPTOR on questions it was not for and could
+reasonably plead the gold set. That plea is now spent: the questions exist,
+they were written and committed before any of this was measured, and the
+technique still does not win them. The mechanism from Phase 5 is unchanged —
+every top-k slot a summary node takes is a slot a creditable chunk did not
+get — and a cross-document question does not rescue it, because the metric
+still needs *character spans in the source papers*, and a summary of a
+cluster is not one however apt it is.
+
+The honest limit of this result: span-based recall may simply be the wrong
+instrument for RAPTOR, in the same way it is the wrong instrument for
+multi-representation. The abstraction-share measurement above (50% of
+retrieved context on broad questions) says the summaries do activate and are
+apt; what this project has never built is a metric that can credit an answer
+assembled from an abstraction. Saying "RAPTOR loses under span recall, and
+span recall cannot see what RAPTOR produces" is both halves of the finding,
+and neither half cancels the other.
 
 Levels 2 and 3 are almost never retrieved (2 hits of 200 on the gold set, 1
 of 60 on broad questions). At 38 documents the tree is taller than the corpus
@@ -670,7 +878,7 @@ None of these produced a stack trace. All four produced plausible output with
 quietly wrong contents, which is the failure mode this project keeps finding
 and the reason the `degraded` sentinel exists.
 
-## Late interaction: ColBERT-style reranking buys recall, at 37x the latency
+## Late interaction: ColBERT-style reranking buys recall, at 46x the latency
 
 Dense retrieval compares one vector per query against one vector per chunk.
 A passage that answers a question in a single clause is represented by the
@@ -707,60 +915,65 @@ python -m evaluation.benchmark --index flat --rerank
 ```
 
 Retrieval fetches `rerank_depth` (50) candidates, MaxSim rescores all of
-them, and the best 20 are what the metrics see. Un-reranked, k=20, flat index (the same six rows as the Phase 3 table
-above; `Mean ms (warm)` is re-measured in the same session as the
-reranked run below, so the two tables' timings are comparable to each
-other rather than to Phase 3's):
+them, and the best 20 are what the metrics see. Un-reranked, k=20, flat
+index, 30 questions (the same five rows as the table at the top of this
+README; `decomposition` is absent from both tables here — see the quota note
+below):
 
 | Strategy | Recall@20 | MRR@20 | nDCG@20 | DocPrec@5 | LLM calls | Mean ms (warm) | Questions |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| hyde | 0.558 | 0.358 | 0.315 | 0.660 | 1.0 | 117 | 10 |
-| rag-fusion | 0.392 | 0.140 | 0.184 | 0.560 | 1.0 | 61 | 10 |
-| step-back | 0.383 | 0.136 | 0.170 | 0.400 | 1.0 | 45 | 10 |
-| multi-query | 0.375 | 0.190 | 0.208 | 0.400 | 1.0 | 60 | 10 |
-| decomposition | 0.333 | 0.194 | 0.187 | 0.600 | 3.4 | 62 | 10 |
-| direct | 0.325 | 0.103 | 0.137 | 0.560 | 0.0 | 22 | 10 |
+| hyde | 0.512 | 0.335 | 0.310 | 0.533 | 1.0 | 123 | 30 |
+| rag-fusion | 0.376 | 0.167 | 0.193 | 0.480 | 1.0 | 91 | 30 |
+| multi-query | 0.314 | 0.202 | 0.199 | 0.460 | 1.0 | 90 | 30 |
+| step-back | 0.300 | 0.166 | 0.162 | 0.393 | 1.0 | 53 | 30 |
+| direct | 0.293 | 0.174 | 0.166 | 0.440 | 0.0 | 27 | 30 |
 
 Reranked (`--rerank`), same index, same gold set:
 
 | Strategy | Recall@20 | MRR@20 | nDCG@20 | DocPrec@5 | LLM calls | Mean ms (warm) | Questions |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| rag-fusion | 0.650 | 0.313 | 0.327 | 0.600 | 1.0 | 2286 | 10 |
-| hyde | 0.600 | 0.242 | 0.265 | 0.580 | 1.0 | 2329 | 10 |
-| multi-query | 0.558 | 0.279 | 0.298 | 0.580 | 1.0 | 2308 | 10 |
-| decomposition | 0.517 | 0.261 | 0.252 | 0.720 | 3.4 | 2255 | 10 |
-| step-back | 0.500 | 0.285 | 0.287 | 0.660 | 1.0 | 2248 | 10 |
-| direct | 0.425 | 0.151 | 0.179 | 0.560 | 0.0 | 2269 | 10 |
+| rag-fusion | 0.504 | 0.341 | 0.299 | 0.547 | 1.0 | 3542 | 30 |
+| hyde | 0.483 | 0.332 | 0.284 | 0.533 | 1.0 | 3619 | 30 |
+| multi-query | 0.424 | 0.311 | 0.271 | 0.547 | 1.0 | 3587 | 30 |
+| direct | 0.410 | 0.299 | 0.252 | 0.500 | 0.0 | 3505 | 30 |
+| step-back | 0.383 | 0.268 | 0.235 | 0.527 | 1.0 | 3537 | 30 |
 
-Per-strategy `Recall@20` delta: `rag-fusion` +0.258, `decomposition` +0.184,
-`multi-query` +0.183, `step-back` +0.117, `direct` +0.100, `hyde` +0.042.
-Averaged over all six, `Recall@20` 0.394 → 0.542, `MRR@20` 0.187 → 0.255,
-`nDCG@20` 0.200 → 0.268, `DocPrec@5` 0.530 → 0.617. **Recall rises for every
-strategy**, and the ordering of the table changes: `rag-fusion` overtakes
-`hyde`, which had led every table in this README since Phase 2.
+Per-strategy `Recall@20` delta: `rag-fusion` +0.128, `direct` +0.117,
+`multi-query` +0.110, `step-back` +0.083, `hyde` **-0.029**. Averaged over
+the five, `Recall@20` 0.359 → 0.441, `MRR@20` 0.209 → 0.310, `nDCG@20`
+0.206 → 0.268, `DocPrec@5` 0.461 → 0.531. `rag-fusion` overtakes `hyde`,
+which had led every table in this README since Phase 2 — the one Phase 6
+finding the larger gold set leaves standing unchanged.
 
-**`hyde` is the one strategy reranking hurts where it counts.** Its recall
-edges up (0.558 → 0.600) while `MRR@20` falls 0.358 → 0.242, `nDCG@20` 0.315
-→ 0.265 and `DocPrec@5` 0.660 → 0.580. HyDE already writes a full
-hypothetical *answer* as its query, so its dense top-1 is usually right; a
-long generated query gives MaxSim many terms to sum over, each free to max
-against a different chunk, and that rewards chunks with broad topical
-coverage over the one chunk that actually answers. Reranking finds more
-relevant chunks for HyDE and puts them lower.
+**Phase 6's claim that "recall rises for every strategy" no longer holds.**
+On 30 questions `hyde`'s recall *falls*, 0.512 → 0.483. The direction of
+every other row is the same as Phase 6 reported and the magnitudes are
+roughly half of it (mean +0.082 against +0.148); hyde alone crossed zero.
+
+**What reranking does to `hyde` is nearly the opposite of what Phase 6
+said.** That section reported hyde's recall edging up while its ranking
+collapsed — `MRR@20` 0.358 → 0.242, `DocPrec@5` 0.660 → 0.580 — and
+explained the collapse by MaxSim summing over a long generated query. On 30
+questions hyde's `MRR@20` is 0.335 → 0.332 and its `DocPrec@5` 0.533 →
+0.533: both flat. The ranking collapse was a 10-question artifact. What is
+left is a recall loss, which that explanation does not cover. The safe
+statement is the narrow one: **reranking helps every strategy except HyDE,
+and on HyDE it does nothing useful.**
 
 **The latency is the result too, not a footnote.** `Mean ms (warm)` goes from
-22-117 ms to 2248-2329 ms — 61 ms to 2283 ms averaged over the six
-strategies, about **37x**, and 103x for `direct`, which had nothing else to
+27-123 ms to 3505-3619 ms — 77 ms to 3558 ms averaged over the five
+strategies, about **46x**, and 130x for `direct`, which had nothing else to
 pay for. Reranking runs a second forward pass over 50 chunks per question
 with every token position kept, and that is the whole bill: it costs no extra
 LLM call (`LLM calls` is identical in both tables), just local compute. The
-per-strategy spread collapses because the reranker's ~2.2 s dwarfs whatever
-the strategy itself was doing.
+per-strategy spread collapses because the reranker's ~3.5 s dwarfs whatever
+the strategy itself was doing. (The two tables' timings come from separate
+runs, so read the ratio, not the millisecond.)
 
-**It is not inert:** measured directly, **10 of 10 gold questions had their
-top-20 order changed** by reranking. A reranker that reordered nothing would
-produce identical numbers and be indistinguishable from one switched off,
-so this is checked rather than assumed.
+**It is not inert:** measured directly on the 10-question set, **10 of 10
+gold questions had their top-20 order changed** by reranking. A reranker that
+reordered nothing would produce identical numbers and be indistinguishable
+from one switched off, so this is checked rather than assumed.
 
 **The confound, and the ablation that removes it.** `--rerank` changes two
 things at once: it rescores with MaxSim, and it deepens the candidate pool
@@ -770,7 +983,8 @@ merge, a deeper pool also changes *what gets fused* before reranking sees
 it. So the table above cannot, by itself, say which of the two did the work.
 
 Measuring it needs a control that holds the pool at 50 and varies only
-whether MaxSim reorders it:
+whether MaxSim reorders it. This ablation is the Phase 6 one, on the
+10-question set, and was not re-run in Phase 7:
 
 | strategy | R@20 pool-50, no rerank | R@20 reranked | MaxSim alone |
 |---|---:|---:|---:|
@@ -815,9 +1029,36 @@ order-sensitive, moved in that same run — which is what exposed it.
   model optimised for their average. The gains above are from the mechanism
   despite the weights, not from a faithful ColBERT.
 
-The standing caveats apply unchanged: 10 questions, retrieval only (no answer
+The standing caveats apply unchanged: 30 questions, retrieval only (no answer
 quality), and a chunk-level gold set that is necessarily incomplete — which
 is why `DocPrec@5` is reported beside the chunk metrics.
+
+## What could not be measured, and why
+
+Phase 7's final sweep hit Gemini's free-tier **daily** quota
+(`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, 500 requests) partway
+through. The flat 30-question sweep is complete, all six strategies, because
+it ran first and paid for every uncached rewrite the twenty new questions
+needed. What it could not pay for:
+
+- **`decomposition` on the raptor, multirep and reranked tables.** Every
+  other strategy builds its rewrite prompt from the question alone, so those
+  prompts were already in the on-disk cache after the flat sweep and the
+  three remaining sweeps cost zero API calls. Decomposition also *answers*
+  each sub-question, and that prompt contains the retrieved context — which
+  differs per index and changes again under reranking. Those are genuinely
+  new calls, and there was no quota left for them. Its row is missing rather
+  than estimated.
+- **The `--route` table on 30 questions.** Routing issues one structured call
+  per question; twenty of the thirty were uncached.
+
+Nothing was allowed to degrade to fill the gap. `check_not_degraded` treats
+a strategy that silently fell back to plain retrieval as fatal, the raptor
+sweep raised it on decomposition's first uncached sub-question, and the run
+stopped there rather than reporting plain retrieval as decomposition. Five
+rows measured honestly are worth more than six with one of them quietly
+wrong — that is the same judgement the `degraded` sentinel exists to enforce,
+applied to the benchmark's own results.
 
 ## The retrieval inspector
 
@@ -889,10 +1130,22 @@ refusal above is genuine rather than staged.
 on brute-force search above.
 
 **The gold set cannot score multi-representation, and penalises RAPTOR.** Its
-questions are specific and its answers are character spans, so a summary node
-is structurally uncreditable. Both techniques are reported above on
-document-level metrics as well, and Phase 7's larger gold set should include
-cross-document questions before either verdict is treated as final.
+answers are character spans, so a summary node is structurally uncreditable.
+Both techniques are reported above on document-level metrics as well. Phase 7
+added the cross-document questions Phase 5 said were missing, and RAPTOR
+still loses on them (-0.051 `Recall@20` against flat on that subset alone);
+what remains unbuilt is a metric that can credit an answer assembled *from*
+an abstraction rather than quoted from a source paper.
+
+**30 questions is still a small gold set, written by one person.** The
+questions, the quotes and the `expects` predictions all come from the author
+of the system. Pre-registering the predictions and reporting that only 6 of
+20 held is what makes that bias visible; it does not remove it. Three
+questions are answered by no strategy at all and are left in place unedited.
+
+**Two tables are incomplete.** `decomposition` is missing from the raptor,
+multirep and reranked tables, and the `--route` table is still the
+10-question one. See "What could not be measured, and why" above.
 
 ## Configuration
 
@@ -925,6 +1178,6 @@ forbidden package is imported anywhere in the project.
 - [x] **Phase 4** — routing and query construction
 - [x] **Phase 5** — multi-representation indexing and RAPTOR
 - [x] **Phase 6** — ColBERT-style late interaction, and a retrieval inspector dashboard
-- [ ] **Phase 7** — full gold set and final benchmark table
+- [x] **Phase 7** — full gold set and final benchmark table
 
 Design: [`docs/superpowers/specs/2026-09-27-rag-from-scratch-design.md`](docs/superpowers/specs/2026-09-27-rag-from-scratch-design.md)

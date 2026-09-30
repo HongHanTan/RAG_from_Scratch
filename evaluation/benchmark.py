@@ -54,7 +54,7 @@ question per strategy.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from evaluation.gold import GoldQuestion, load_gold
@@ -83,6 +83,12 @@ class StrategyScore:
     llm_calls: float
     mean_ms_warm: float
     questions: int
+    recall_by_question: dict[str, float] = field(default_factory=dict)
+    """Recall@k per gold question id, kept so `--predictions` can ask which
+    strategy actually won each question. The averaged columns cannot answer
+    that: a strategy can lead the table while losing most individual
+    questions.
+    """
 
 
 class _CallCountingLLM:
@@ -225,6 +231,7 @@ def score_strategy(
     run_once()  # warm-up: not scored
     traced = run_once()
 
+    recall_by_question: dict[str, float] = {}
     recalls: list[float] = []
     rrs: list[float] = []
     ndcgs: list[float] = []
@@ -236,7 +243,9 @@ def score_strategy(
         retrieved_ids = [r.chunk.chunk_id for r in trace.retrieved]
         retrieved_doc_ids = [r.chunk.doc_id for r in trace.retrieved]
         relevant = relevant_chunk_ids(question, store.chunks)
-        recalls.append(recall_at_k(retrieved_ids, relevant, k))
+        recall = recall_at_k(retrieved_ids, relevant, k)
+        recalls.append(recall)
+        recall_by_question[question.id] = recall
         rrs.append(reciprocal_rank(retrieved_ids, relevant))
         ndcgs.append(ndcg_at_k(retrieved_ids, relevant, k))
         doc_precisions.append(
@@ -258,6 +267,7 @@ def score_strategy(
         llm_calls=mean(llm_calls),
         mean_ms_warm=mean(times),
         questions=n,
+        recall_by_question=recall_by_question,
     )
 
 
@@ -289,6 +299,69 @@ def format_table(scores: list[StrategyScore], k: int) -> str:
         for s in sorted(scores, key=lambda s: (-s.recall_at_k, s.strategy))
     ]
     return "\n".join([header, *rows])
+
+
+def score_predictions(
+    per_question: dict[str, dict[str, float]], expects: dict[str, str]
+) -> tuple[int, int]:
+    """How often the pre-registered prediction named the winning strategy.
+
+    A question whose strategies all tie is counted as a miss, not a hit: the
+    prediction distinguished nothing there, and crediting it would inflate
+    the scorecard exactly where it is least informative.
+    """
+    hits = total = 0
+    for qid, scores in per_question.items():
+        predicted = expects.get(qid, "")
+        if not predicted or not scores:
+            continue
+        total += 1
+        best = max(scores.values())
+        if best > min(scores.values()) and scores.get(predicted, -1.0) == best:
+            hits += 1
+    return hits, total
+
+
+def format_prediction_report(
+    per_question: dict[str, dict[str, float]], expects: dict[str, str]
+) -> str:
+    """Render the scorecard: one row per predicted question, then the total.
+
+    Reported whatever it says. The gold set was written by someone who knows
+    what each technique does, which is what lets it separate them and also
+    what would let it be fitted to a flattering answer; the prediction was
+    recorded before any of it was measured, and printing how often it held is
+    what makes that risk visible instead of hidden. A low score is a finding
+    about the author's model of these techniques, not a defect in the report.
+    """
+    lines = [
+        "prediction scorecard (pre-registered `expects`, "
+        "scored on Recall@k per question):",
+        "",
+        "| Question | Predicted | Actual winner | Recall (predicted) "
+        "| Recall (best) | Hit |",
+        "|---|---|---|---:|---:|---|",
+    ]
+    for qid in sorted(per_question):
+        scores = per_question[qid]
+        predicted = expects.get(qid, "")
+        if not predicted or not scores:
+            continue
+        best = max(scores.values())
+        worst = min(scores.values())
+        winners = sorted(name for name, v in scores.items() if v == best)
+        decisive = best > worst
+        hit = decisive and scores.get(predicted, -1.0) == best
+        actual = ", ".join(winners) if decisive else "tie (all equal)"
+        lines.append(
+            f"| {qid} | {predicted} | {actual} | "
+            f"{scores.get(predicted, 0.0):.3f} | {best:.3f} | "
+            f"{'yes' if hit else 'no'} |"
+        )
+    hits, total = score_predictions(per_question, expects)
+    share = f"{hits / total:.1%}" if total else "n/a"
+    lines += ["", f"predictions correct: {hits}/{total} ({share})"]
+    return "\n".join(lines)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -342,6 +415,16 @@ def build_parser() -> argparse.ArgumentParser:
             "interaction before scoring. Produces the same columns, so the "
             "two tables are directly comparable -- that comparison is what "
             "says whether late interaction helps."
+        ),
+    )
+    parser.add_argument(
+        "--predictions",
+        action="store_true",
+        help=(
+            "also report how often each question's pre-registered `expects` "
+            "prediction named the strategy that actually scored best on it. "
+            "Only questions carrying a prediction are counted; the original "
+            "ten predate the practice and are skipped."
         ),
     )
     parser.add_argument(
@@ -401,6 +484,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.route:
         print("routed (--route):")
     print(table)
+    if args.predictions:
+        per_question: dict[str, dict[str, float]] = {}
+        for score in scores:
+            for qid, recall in score.recall_by_question.items():
+                per_question.setdefault(qid, {})[score.strategy] = recall
+        expects = {q.id: q.expects for q in gold}
+        report = format_prediction_report(per_question, expects)
+        print()
+        print(report)
     if args.out:
         args.out.write_text(table + "\n", encoding="utf-8")
     return 0
